@@ -1,0 +1,50 @@
+{
+  "name": "tingjian-blind-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --lan",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web --port 8081",
+    "server": "tsx watch server/index.ts",
+    "server:start": "tsx server/index.ts",
+    "server:local": "node --env-file-if-exists=.env --use-env-proxy --import tsx server/index.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "build:web": "expo export --platform web",
+    "build:native": "expo export --platform android --platform ios --output-dir dist-native",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "@expo/vector-icons": "^15.0.2",
+    "dotenv": "^17.2.0",
+    "expo": "~57.0.24",
+    "expo-file-system": "~57.0.7",
+    "expo-image-manipulator": "~57.0.19",
+    "expo-image-picker": "~57.0.19",
+    "expo-speech": "~57.0.3",
+    "expo-status-bar": "~57.0.1",
+    "expo-video-thumbnails": "~57.0.2",
+    "express": "^5.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-web": "^0.21.2",
+    "zod": "^4.1.0"
+  },
+  "overrides": {
+    "xcode": { "uuid": "^11.1.1" }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "~19.2.2",
+    "tsx": "^4.20.0",
+    "typescript": "~6.0.3"
+  }
+}

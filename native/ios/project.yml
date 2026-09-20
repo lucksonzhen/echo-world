@@ -1,0 +1,58 @@
+name: TingjianScreen
+options:
+  bundleIdPrefix: com.tingjian
+  deploymentTarget:
+    iOS: '18.0'
+  xcodeVersion: '16.0'
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ''
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 1.0.0
+    IPHONEOS_DEPLOYMENT_TARGET: '18.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    GENERATE_INFOPLIST_FILE: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  TingjianScreen:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tingjian.screen
+        PRODUCT_NAME: TingjianScreen
+        CODE_SIGN_ENTITLEMENTS: Config/TingjianScreen.entitlements
+      configs:
+        Debug:
+          INFOPLIST_FILE: Config/Info.Debug.plist
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          INFOPLIST_FILE: Config/Info.plist
+  TingjianScreenTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: TingjianScreen
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tingjian.screen.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/TingjianScreen.app/TingjianScreen
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  TingjianScreen:
+    build:
+      targets:
+        TingjianScreen: all
+        TingjianScreenTests: [test]
+    test:
+      targets:
+        - TingjianScreenTests

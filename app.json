@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "听见画面",
+    "slug": "tingjian-blind-assistant",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tingjian.assistant",
+      "infoPlist": { "NSLocalNetworkUsageDescription": "连接同一局域网中配置的画面描述服务。" }
+    },
+    "android": {
+      "package": "com.tingjian.assistant",
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
+    },
+    "web": { "name": "听见画面", "bundler": "metro" },
+    "plugins": [["expo-image-picker", {
+      "photosPermission": "选择你希望听取描述的照片或视频。",
+      "cameraPermission": "拍摄一张照片，听取画面描述。",
+      "microphonePermission": false
+    }]]
+  }
+}

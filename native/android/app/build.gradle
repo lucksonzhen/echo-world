@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.tingjian.assistant'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.tingjian.assistant.screen'
+        minSdk 30
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        testInstrumentationRunner 'com.tingjian.assistant.VoiceModelInstrumentation'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildTypes {
+        debug { manifestPlaceholders = [allowCleartext: 'true'] }
+        release { manifestPlaceholders = [allowCleartext: 'false']; minifyEnabled false }
+    }
+}
+
+dependencies {
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+}

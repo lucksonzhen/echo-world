@@ -1,0 +1,15 @@
+Vosk Chinese speech model: vosk-model-small-cn-0.22
+Publisher: Alpha Cephei
+License: Apache License 2.0 (see licenses/VOSK-APACHE-2.0.txt)
+License listing: https://alphacephei.com/vosk/models
+Source: https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip
+Archive bytes: 43898754
+SHA-256: 3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba
+The checksum was computed from the official HTTPS download to pin this build input.
+It is not an upstream-published signature or checksum.
+
+Vosk Android 0.3.75 is licensed under Apache License 2.0.
+Source: https://github.com/alphacep/vosk-api
+JNA 5.18.1 is used under its Apache License 2.0 option.
+Source and original dual-license notice: https://github.com/java-native-access/jna
+See licenses/JNA-LICENSE.txt for the original notice.

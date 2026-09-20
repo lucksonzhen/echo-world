@@ -1,0 +1,10 @@
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/service_description"
+    android:summary="@string/service_summary"
+    android:settingsActivity="com.tingjian.assistant.MainActivity"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackSpoken"
+    android:notificationTimeout="150"
+    android:canTakeScreenshot="true"
+    android:canRetrieveWindowContent="false"
+    android:isAccessibilityTool="true" />
