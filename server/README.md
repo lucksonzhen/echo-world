@@ -21,6 +21,8 @@ npm run server
 | `APP_ACCESS_TOKEN` | 可选连接口令；手机设置中填写同一口令 |
 | `CORS_ORIGINS` | 允许的网页来源，以逗号分隔；原生 App 通常不发送 Origin |
 
+密钥只从上述环境变量或 `.env`（已被 git 忽略）读取，仓库和客户端代码中不存放任何密钥。`EXPO_PUBLIC_*` 变量会被 Expo 打包进手机应用，因此服务端启动时若发现 `EXPO_PUBLIC_` 前缀下存在包含 `API_KEY`、`SECRET`、`TOKEN`、`PASSWORD` 的非空变量，会拒绝启动并提示改用服务端变量。
+
 普通进程用 `npm run server:start`。需要代理时，在 `.env` 设置 `HTTPS_PROXY`、`HTTP_PROXY` 和 `NO_PROXY=localhost,127.0.0.1,10.0.2.2`，运行 `npm run server:local`（Node.js 24.5+）。代理地址填写本机实际地址；不会修改系统代理。
 
 模拟器连接 `http://10.0.2.2:端口`。真机连接电脑局域网 IP，服务须监听 `0.0.0.0`，并允许对应端口访问。已有配置无需覆盖。

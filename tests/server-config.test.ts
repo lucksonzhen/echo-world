@@ -25,3 +25,12 @@ test('invalid provider and port fail before starting the service', () => {
     assert.throws(() => readServerConfig({ PORT: port }), /PORT/);
   }
 });
+
+test('secrets under the client-bundled EXPO_PUBLIC_ prefix refuse to start', () => {
+  for (const name of ['EXPO_PUBLIC_OPENAI_API_KEY', 'EXPO_PUBLIC_GEMINI_APIKEY', 'EXPO_PUBLIC_APP_ACCESS_TOKEN', 'EXPO_PUBLIC_SECRET']) {
+    assert.throws(() => readServerConfig({ OPENAI_API_KEY: 'k', [name]: 'leaked' }), new RegExp(name));
+  }
+  // Non-secret public settings and empty placeholders remain allowed.
+  const config = readServerConfig({ OPENAI_API_KEY: 'k', EXPO_PUBLIC_API_URL: 'http://localhost:8787', EXPO_PUBLIC_OPENAI_API_KEY: '  ' });
+  assert.equal(config.options.apiKey, 'k');
+});
