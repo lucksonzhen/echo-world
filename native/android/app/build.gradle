@@ -3,6 +3,8 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.tingjian.assistant'
     compileSdk 35
+    // The bundled speech model is already a compressed ZIP; recompressing wastes build time and memory.
+    aaptOptions { noCompress 'zip' }
     defaultConfig {
         applicationId 'com.tingjian.assistant.screen'
         minSdk 30

@@ -25,6 +25,9 @@ public final class VoiceModelInstrumentation extends Instrumentation {
         {"disable-listening.wav", "DISABLE_LISTENING"},
         {"pause-start.wav", "PAUSE_START"},
         {"pause-stop.wav", "PAUSE_STOP"},
+        {"monitor-stop.wav", "MONITOR_STOP"},
+        {"auto-image-start.wav", "AUTO_IMAGE_START"},
+        {"auto-image-stop.wav", "AUTO_IMAGE_STOP"},
         {"faster.wav", "FASTER"},
         {"slower.wav", "SLOWER"},
         {"normal-rate.wav", "NORMAL_RATE"}

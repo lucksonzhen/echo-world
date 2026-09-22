@@ -21,16 +21,41 @@ import java.util.zip.ZipInputStream;
 /** Installs the bundled, checksum-pinned model without network access or shared storage. */
 public final class OfflineModelStore {
     private static final String ASSET = "voice-model-cn.zip";
-    private static final String ARCHIVE_ROOT = "vosk-model-small-cn-0.22/";
-    private static final String MODEL_DIRECTORY = "vosk-cn-0.22";
     private static final String COMPLETE_FILE = ".complete.sha256";
-    private static final String SHA256 = "3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba";
-    private static final long ARCHIVE_BYTES = 43_898_754L;
-    private static final long MAX_UNPACKED_BYTES = 256L * 1024 * 1024;
     private static final int MAX_ENTRIES = 256;
-    private static final String[] REQUIRED_FILES = {
-        "am/final.mdl", "conf/mfcc.conf", "conf/model.conf", "graph/HCLr.fst", "graph/Gr.fst"
-    };
+
+    /**
+     * One speech model the build may bundle into ASSET. prepare-voice-model.mjs packages the
+     * large model by default (better accuracy, about 2.0 GiB unpacked and roughly 2 GiB of RAM
+     * while recognizing); `--small` packages the small model for low-storage devices. The first
+     * candidate whose checksum matches the bundled asset is used.
+     */
+    private static final class ModelDef {
+        final String archiveRoot;
+        final String directory;
+        final String sha256;
+        final long archiveBytes;
+        final long maxUnpackedBytes;
+        final String[] requiredFiles;
+        ModelDef(String archiveRoot, String directory, String sha256,
+                long archiveBytes, long maxUnpackedBytes, String[] requiredFiles) {
+            this.archiveRoot = archiveRoot; this.directory = directory; this.sha256 = sha256;
+            this.archiveBytes = archiveBytes; this.maxUnpackedBytes = maxUnpackedBytes;
+            this.requiredFiles = requiredFiles;
+        }
+    }
+
+    private static final ModelDef LARGE = new ModelDef(
+            "vosk-model-cn-0.22/", "vosk-cn-0.22-large",
+            "7f5580bf7ca3d9e8ce8be68337378950ed78ef974df7a7d4ead8dbe32bec2fa1", 1_358_736_686L,
+            3072L * 1024 * 1024,
+            new String[] { "am/final.mdl", "conf/mfcc.conf", "conf/model.conf", "graph/HCLG.fst", "ivector/final.ie" });
+    private static final ModelDef SMALL = new ModelDef(
+            "vosk-model-small-cn-0.22/", "vosk-cn-0.22",
+            "3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba", 43_898_754L,
+            256L * 1024 * 1024,
+            new String[] { "am/final.mdl", "conf/mfcc.conf", "conf/model.conf", "graph/HCLr.fst", "graph/Gr.fst" });
+    private static final ModelDef[] CANDIDATES = { LARGE, SMALL };
 
     private OfflineModelStore() {}
 
@@ -41,34 +66,46 @@ public final class OfflineModelStore {
         }
         Context app = context.getApplicationContext();
         File parent = app.getNoBackupFilesDir().getCanonicalFile();
-        File destination = new File(parent, MODEL_DIRECTORY);
-        File staging = new File(parent, MODEL_DIRECTORY + ".partial");
-        requireInside(destination, parent);
-        requireInside(staging, parent);
-        if (isComplete(destination)) return destination;
-
         // Verify the APK asset before using its entries; do not trust a partial or
         // accidentally substituted developer download as a usable speech model.
-        verifyArchive(app);
-        removeOwnedTree(staging, parent);
-        if (!staging.mkdirs() && !staging.isDirectory()) throw new IOException("无法创建离线语音模型目录。");
-        try {
-            extract(app, staging);
-            if (!hasRequiredFiles(staging)) throw new IOException("离线语音模型文件不完整，请重新安装应用。");
-            try (FileOutputStream marker = new FileOutputStream(new File(staging, COMPLETE_FILE))) {
-                marker.write(SHA256.getBytes(StandardCharsets.US_ASCII));
-                marker.getFD().sync();
-            }
-            removeOwnedTree(destination, parent);
-            if (!staging.renameTo(destination)) throw new IOException("无法完成离线语音模型准备，请重试。");
-            return destination;
-        } catch (IOException error) {
-            try { removeOwnedTree(staging, parent); } catch (IOException cleanup) { error.addSuppressed(cleanup); }
-            throw error;
+        ModelDef model = null;
+        for (ModelDef candidate : CANDIDATES) {
+            if (verifyArchive(app, candidate)) { model = candidate; break; }
         }
+        if (model == null) throw new IOException("离线语音模型校验失败，请重新安装完整的应用。");
+        File destination = new File(parent, model.directory);
+        File staging = new File(parent, model.directory + ".partial");
+        requireInside(destination, parent);
+        requireInside(staging, parent);
+        if (!isComplete(destination, model)) {
+            removeOwnedTree(staging, parent);
+            if (!staging.mkdirs() && !staging.isDirectory()) throw new IOException("无法创建离线语音模型目录。");
+            try {
+                extract(app, staging, model);
+                if (!hasRequiredFiles(staging, model)) throw new IOException("离线语音模型文件不完整，请重新安装应用。");
+                try (FileOutputStream marker = new FileOutputStream(new File(staging, COMPLETE_FILE))) {
+                    marker.write(model.sha256.getBytes(StandardCharsets.US_ASCII));
+                    marker.getFD().sync();
+                }
+                removeOwnedTree(destination, parent);
+                if (!staging.renameTo(destination)) throw new IOException("无法完成离线语音模型准备，请重试。");
+            } catch (IOException error) {
+                try { removeOwnedTree(staging, parent); } catch (IOException cleanup) { error.addSuppressed(cleanup); }
+                throw error;
+            }
+        }
+        // Free the storage of the model variant this build no longer bundles.
+        for (ModelDef other : CANDIDATES) {
+            if (other == model) continue;
+            try {
+                removeOwnedTree(new File(parent, other.directory), parent);
+                removeOwnedTree(new File(parent, other.directory + ".partial"), parent);
+            } catch (IOException ignored) { }
+        }
+        return destination;
     }
 
-    private static void verifyArchive(Context context) throws IOException {
+    private static boolean verifyArchive(Context context, ModelDef model) throws IOException {
         MessageDigest digest;
         try { digest = MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException error) { throw new IOException("系统不支持模型完整性检查。", error); }
@@ -79,18 +116,16 @@ public final class OfflineModelStore {
             while ((count = input.read(buffer)) != -1) {
                 if (Thread.currentThread().isInterrupted()) throw new IOException("语音模型准备已取消。");
                 bytes += count;
-                if (bytes > ARCHIVE_BYTES) throw new IOException("离线语音模型大小不正确，请重新安装应用。");
+                if (bytes > model.archiveBytes) return false;
                 digest.update(buffer, 0, count);
             }
         }
         StringBuilder hex = new StringBuilder();
         for (byte value : digest.digest()) hex.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
-        if (bytes != ARCHIVE_BYTES || !SHA256.equals(hex.toString())) {
-            throw new IOException("离线语音模型校验失败，请重新安装完整的应用。");
-        }
+        return bytes == model.archiveBytes && model.sha256.equals(hex.toString());
     }
 
-    private static void extract(Context context, File staging) throws IOException {
+    private static void extract(Context context, File staging, ModelDef model) throws IOException {
         long unpacked = 0;
         int count = 0;
         Set<String> names = new HashSet<>();
@@ -101,10 +136,10 @@ public final class OfflineModelStore {
                 if (Thread.currentThread().isInterrupted()) throw new IOException("语音模型准备已取消。");
                 if (++count > MAX_ENTRIES) throw new IOException("语音模型文件数量超过限制。");
                 String name = entry.getName();
-                if (!name.startsWith(ARCHIVE_ROOT) || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0 || !names.add(name)) {
+                if (!name.startsWith(model.archiveRoot) || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0 || !names.add(name)) {
                     throw new IOException("语音模型压缩包包含无效路径。");
                 }
-                String relative = name.substring(ARCHIVE_ROOT.length());
+                String relative = name.substring(model.archiveRoot.length());
                 if (relative.isEmpty()) { zip.closeEntry(); continue; }
                 if (relative.equals(COMPLETE_FILE)) throw new IOException("语音模型压缩包包含保留文件。");
                 File target = new File(staging, relative);
@@ -112,7 +147,7 @@ public final class OfflineModelStore {
                 if (entry.isDirectory()) {
                     if (!target.mkdirs() && !target.isDirectory()) throw new IOException("无法创建模型子目录。");
                 } else {
-                    if (entry.getSize() > MAX_UNPACKED_BYTES) throw new IOException("语音模型解压大小超过限制。");
+                    if (entry.getSize() > model.maxUnpackedBytes) throw new IOException("语音模型解压大小超过限制。");
                     File directory = target.getParentFile();
                     if (directory == null || (!directory.mkdirs() && !directory.isDirectory())) throw new IOException("无法创建模型目录。");
                     try (BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
@@ -120,7 +155,7 @@ public final class OfflineModelStore {
                         while ((length = zip.read(buffer)) != -1) {
                             if (Thread.currentThread().isInterrupted()) throw new IOException("语音模型准备已取消。");
                             unpacked += length;
-                            if (unpacked > MAX_UNPACKED_BYTES) throw new IOException("语音模型解压大小超过限制。");
+                            if (unpacked > model.maxUnpackedBytes) throw new IOException("语音模型解压大小超过限制。");
                             output.write(buffer, 0, length);
                         }
                     }
@@ -130,17 +165,17 @@ public final class OfflineModelStore {
         }
     }
 
-    private static boolean hasRequiredFiles(File directory) {
-        for (String relative : REQUIRED_FILES) {
+    private static boolean hasRequiredFiles(File directory, ModelDef model) {
+        for (String relative : model.requiredFiles) {
             File file = new File(directory, relative);
             if (!file.isFile() || file.length() == 0) return false;
         }
         return true;
     }
 
-    private static boolean isComplete(File directory) throws IOException {
+    private static boolean isComplete(File directory, ModelDef model) throws IOException {
         File marker = new File(directory, COMPLETE_FILE);
-        if (!hasRequiredFiles(directory) || !marker.isFile() || marker.length() != SHA256.length()) return false;
+        if (!hasRequiredFiles(directory, model) || !marker.isFile() || marker.length() != model.sha256.length()) return false;
         try (InputStream input = new FileInputStream(marker); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[128];
             int count;
@@ -148,7 +183,7 @@ public final class OfflineModelStore {
                 if (bytes.size() + count > 128) return false;
                 bytes.write(buffer, 0, count);
             }
-            return SHA256.equals(new String(bytes.toByteArray(), StandardCharsets.US_ASCII));
+            return model.sha256.equals(new String(bytes.toByteArray(), StandardCharsets.US_ASCII));
         }
     }
 

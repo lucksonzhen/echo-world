@@ -94,7 +94,7 @@ public final class WakeWordService extends Service {
             setStatus("请先在系统无障碍设置中开启屏幕读取服务。", true); stopSelf(); return START_NOT_STICKY;
         }
         live = true; running = true; recognitionSession = wake.start();
-        setStatus("正在准备本地语音识别，首次开启需要稍等。", true);
+        setStatus("正在准备本地语音识别，首次开启需要解压语音模型，可能要等一到几分钟。", true);
         worker.execute(this::listen);
         main.post(tick);
         return START_NOT_STICKY;
