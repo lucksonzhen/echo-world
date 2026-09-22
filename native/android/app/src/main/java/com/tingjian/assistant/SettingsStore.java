@@ -41,6 +41,8 @@ public final class SettingsStore {
     }
     public boolean isPauseDescriptionEnabled() { return prefs.getBoolean("pause_description", false); }
     public void setPauseDescriptionEnabled(boolean enabled) { prefs.edit().putBoolean("pause_description", enabled).apply(); }
+    public boolean isImageWatchEnabled() { return prefs.getBoolean("image_watch", false); }
+    public void setImageWatchEnabled(boolean enabled) { prefs.edit().putBoolean("image_watch", enabled).apply(); }
     public String getServerUrl() { synchronized (SETTINGS_LOCK) { return prefs.getString("server_url", ""); } }
     public String getAccessToken() {
         synchronized (SETTINGS_LOCK) { return readAccessToken(); }
@@ -67,7 +69,7 @@ public final class SettingsStore {
             prefs.edit().putString("server_url", url).putString("token_encrypted", encrypted).putBoolean("screen_consent", consent).apply();
         }
     }
-    public void revokeConsent() { synchronized (SETTINGS_LOCK) { prefs.edit().putBoolean("screen_consent", false).putBoolean("pause_description", false).apply(); } }
+    public void revokeConsent() { synchronized (SETTINGS_LOCK) { prefs.edit().putBoolean("screen_consent", false).putBoolean("pause_description", false).putBoolean("image_watch", false).apply(); } }
     public static String validateUrl(String input, boolean debug) {
         try {
             URI uri = new URI(input.trim());

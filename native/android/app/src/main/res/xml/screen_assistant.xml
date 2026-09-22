@@ -2,9 +2,9 @@
     android:description="@string/service_description"
     android:summary="@string/service_summary"
     android:settingsActivity="com.tingjian.assistant.MainActivity"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackSpoken"
     android:notificationTimeout="150"
     android:canTakeScreenshot="true"
-    android:canRetrieveWindowContent="false"
+    android:canRetrieveWindowContent="true"
     android:isAccessibilityTool="true" />

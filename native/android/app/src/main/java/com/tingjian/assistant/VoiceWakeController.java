@@ -6,7 +6,8 @@ import java.util.function.LongSupplier;
 /**
  * Pure, single-threaded wake-word state machine. Call it on the service's serial callback thread.
  * Captures require final microphone transcripts. Stable, exactly prefixed partial STOP/disable
- * commands may interrupt speech early. During narration, only explicit stop/disable/rate commands run. This reduces
+ * commands may interrupt speech early. During narration, only explicit stop/disable/rate commands run
+ * (including the monitor-stop and automatic-image-stop variants). This reduces
  * the app's own echo risk but cannot distinguish a human invocation from identical audio nearby.
  */
 public final class VoiceWakeController {
@@ -179,6 +180,7 @@ public final class VoiceWakeController {
 
     private static boolean permittedDuringNarration(ScreenCommand.Kind kind) {
         return kind == ScreenCommand.Kind.STOP || kind == ScreenCommand.Kind.PAUSE_STOP
+                || kind == ScreenCommand.Kind.MONITOR_STOP || kind == ScreenCommand.Kind.AUTO_IMAGE_STOP
                 || kind == ScreenCommand.Kind.FASTER || kind == ScreenCommand.Kind.SLOWER
                 || kind == ScreenCommand.Kind.NORMAL_RATE;
     }

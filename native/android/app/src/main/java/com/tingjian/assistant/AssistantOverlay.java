@@ -36,6 +36,7 @@ final class AssistantOverlay {
     private boolean expanded;
     private boolean active;
     private boolean pauseEnabled;
+    private boolean imageWatchEnabled;
     private String statusMessage = "";
     private String latestDescription = "";
 
@@ -64,9 +65,10 @@ final class AssistantOverlay {
         windows.addView(panel, params);
     }
 
-    void render(boolean active, boolean pauseEnabled, String status, String description) {
+    void render(boolean active, boolean pauseEnabled, boolean imageWatchEnabled, String status, String description) {
         this.active = active;
         this.pauseEnabled = pauseEnabled;
+        this.imageWatchEnabled = imageWatchEnabled;
         statusMessage = status;
         latestDescription = description;
         updatePanel();
@@ -119,7 +121,11 @@ final class AssistantOverlay {
             Button expand = button("听见屏幕", () -> { expanded = true; updatePanel(); });
             expand.setContentDescription("听见屏幕，展开控制");
             panel.addView(expand);
-            if (active || pauseEnabled) panel.addView(button("停止", () -> listener.onCommand("停止")));
+            if (active || pauseEnabled || imageWatchEnabled) {
+                Button stop = button("停止", () -> listener.onCommand("停止"));
+                stop.setContentDescription("停止，取消当前任务并关闭自动描述");
+                panel.addView(stop);
+            }
             return;
         }
         LinearLayout header = new LinearLayout(context);
@@ -153,6 +159,10 @@ final class AssistantOverlay {
         controls.addView(video);
         controls.addView(button(pauseEnabled ? "关闭暂停讲解" : "开启暂停讲解",
                 () -> listener.onCommand(pauseEnabled ? "关闭暂停讲解" : "开启暂停讲解")));
+        Button imageWatch = button(imageWatchEnabled ? "关闭图片自动描述" : "开启图片自动描述",
+                () -> listener.onCommand(imageWatchEnabled ? "关闭图片自动描述" : "开启图片自动描述"));
+        imageWatch.setContentDescription(imageWatchEnabled ? "关闭图片自动描述" : "开启图片自动描述，浏览时自动简述较大的图片");
+        controls.addView(imageWatch);
         controls.addView(button("语音待命设置", listener::onVoiceSettings));
         controls.addView(button("停止", () -> listener.onCommand("停止")));
         controls.addView(button("关闭服务", listener::onClose));

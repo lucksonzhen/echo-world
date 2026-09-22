@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
     private final Handler main = new Handler();
     private TextView voiceStatus;
     private TextView playbackStatus;
+    private TextView imageWatchStatus;
     private static final int VOICE_PERMISSIONS = 32;
 
     @Override public void onCreate(Bundle state) {
@@ -60,7 +61,7 @@ public final class MainActivity extends Activity {
         try { token.setText(store.getAccessToken()); } catch (Exception error) { report(error.getMessage()); }
         text(body,"正式使用请连接 HTTPS 服务。API 密钥只配置在服务器，手机无需填写。",14);
         heading(body,"2. 允许按命令识别屏幕",20);
-        text(body,"开启后会出现悬浮按钮。发出描述命令时，会将当前压缩画面发送到上述服务及 AI 提供方。若另外开启暂停讲解，支持的播放器暂停后也会发送一张当前画面。视频观察命令约 8 秒取 6 帧，不包含声音。截图只在内存中处理，不保存到相册。",16);
+        text(body,"开启后会出现悬浮按钮。发出描述命令时，会将当前压缩画面发送到上述服务及 AI 提供方。若另外开启暂停讲解，支持的播放器暂停后也会发送一张当前画面。若开启图片自动描述，会在本机读取前台应用的控件类型、标签和位置以发现大图，并只上传该图片区域。视频观察命令约 8 秒取 6 帧，不包含声音。截图和控件信息只在内存中处理，不保存到相册。",16);
         consent = new CheckBox(this); consent.setText("我了解并允许按上述方式发送当前屏幕进行描述"); consent.setTextSize(16); consent.setMinHeight(dp(56)); consent.setTextColor(INK);
         consent.setChecked(store.isConsentGranted()); body.addView(consent);
         consent.setOnCheckedChangeListener((button, checked) -> { if (!checked) { store.revokeConsent(); WakeWordService.stopListening(this); ScreenAssistantService.dispatchCommand("停止"); report("已关闭语音待命并暂停屏幕识别。"); } });
@@ -100,9 +101,21 @@ public final class MainActivity extends Activity {
             store.setPauseDescriptionEnabled(false);
             ScreenAssistantService.dispatchCommand("关闭暂停讲解");
         });
-        heading(body,"5. 回到正在浏览的应用，直接说",20);
-        text(body,"“小助手，描述屏幕”\n“小助手，读文字”\n“小助手，看看视频”\n“小助手，开启暂停讲解”\n“小助手，关闭暂停讲解”\n“小助手，快一点”或“慢一点”\n“小助手，正常语速”\n“小助手，左边那张图片有什么？”\n“小助手，停止”——取消任务、朗读及暂停讲解\n“小助手，关闭语音监听”——关闭麦克风",16);
-        text(body,"也可先说“小助手”，听到提示音后在八秒内说要求。默认语速为 1.35 倍，可用语音调节。朗读过程中先说“小助手，停止”，再提出新的描述要求；语速和关闭暂停讲解指令可直接说。悬浮按钮仅作备用入口。",16);
+        heading(body,"5. 图片自动描述（可选）",20);
+        text(body,"默认关闭。开启后，浏览其他应用时若页面上出现没有文字说明的较大图片，会在画面稳定约 1 秒后自动简短描述；同一张图不重复，两次描述至少间隔 4 秒，滚动或切换应用会取消未读完的内容。",16);
+        text(body,"为了找到图片，应用会在本机读取前台页面的控件类型、标签和位置，这些信息不上传；上传的只有裁剪后的图片区域。已有完整文字说明的图片交由读屏器朗读，不再重复。部分应用不暴露图片控件，只能用语音请求描述。",14);
+        imageWatchStatus = text(body,"",16);
+        button(body,"开启图片自动描述",() -> {
+            if (checkingConnection || !save() || !consent.isChecked()) return;
+            if (!ScreenAssistantService.dispatchCommand("开启图片自动描述")) report("请先开启屏幕读取服务。");
+        });
+        button(body,"关闭图片自动描述",() -> {
+            store.setImageWatchEnabled(false);
+            ScreenAssistantService.dispatchCommand("关闭图片自动描述");
+        });
+        heading(body,"6. 回到正在浏览的应用，直接说",20);
+        text(body,"“小助手，描述屏幕”\n“小助手，读文字”\n“小助手，看看视频”\n“小助手，开启暂停讲解”\n“小助手，关闭暂停讲解”\n“小助手，开启图片自动描述”\n“小助手，关闭图片自动描述”\n“小助手，停止监控屏幕”——关闭图片自动描述和暂停讲解，保留语音待命\n“小助手，快一点”或“慢一点”\n“小助手，正常语速”\n“小助手，左边那张图片有什么？”\n“小助手，停止”——取消任务、朗读及所有自动描述\n“小助手，关闭语音监听”——关闭麦克风",16);
+        text(body,"也可先说“小助手”，听到提示音后在八秒内说要求。默认语速为 1.35 倍，可用语音调节。朗读过程中先说“小助手，停止”，再提出新的描述要求；语速、关闭暂停讲解、关闭图片自动描述和停止监控屏幕指令可直接说。悬浮按钮仅作备用入口。",16);
         text(body,"首次授权可通过 TalkBack 的读屏导航完成。若系统关闭服务或手机重启，需要重新打开本应用开启语音待命。外放视频中出现相同唤醒口令可能误触发，耳机通常能减少干扰，仍需在实际设备验证。",14);
         text(body,"仅能理解当前可见内容，不会自动滚动；受保护页面或锁屏无法截图。视频需要在观察期间继续播放。",14);
         button(body,"打开系统无障碍设置",this::openAccessibility);
@@ -126,6 +139,8 @@ public final class MainActivity extends Activity {
                     ? (store.isPauseDescriptionEnabled() ? "暂停讲解已开启，等待视频先播放再暂停。" : "播放状态已授权。可说小助手开启暂停讲解。")
                     : "播放状态尚未授权；语音描述屏幕仍可使用。";
             if (playbackStatus != null && !playback.contentEquals(playbackStatus.getText())) playbackStatus.setText(playback);
+            String imageWatch = store.isImageWatchEnabled() ? "图片自动描述已开启，浏览时遇到大图会自动简述。" : "图片自动描述已关闭；可说小助手开启图片自动描述。";
+            if (imageWatchStatus != null && !imageWatch.contentEquals(imageWatchStatus.getText())) imageWatchStatus.setText(imageWatch);
             main.postDelayed(this, 700);
         }
     };

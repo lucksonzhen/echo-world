@@ -4,7 +4,7 @@
 
 | 位置 | 职责 |
 | --- | --- |
-| `native/android/` | 手机本地语音、截图、暂停检测和朗读 |
+| `native/android/` | 手机本地语音、截图、暂停检测、图片自动描述和朗读 |
 | `native/ios/` | Siri 快捷指令的截图描述入口 |
 | `server/app.ts`、`middleware.ts` | HTTP 路由、鉴权、限流与错误处理 |
 | `server/describe.ts` | 组织识别请求并验证描述结果 |
@@ -15,9 +15,11 @@
 | `tests/` | TypeScript 单元与 HTTP 集成测试 |
 | `demo/android/` | 带真实动态视频的独立演示播放器 |
 
-Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay` 管理悬浮面板；`MediaPauseMonitor` 监听播放，`AssistantApi` 调用服务，`Narrator` 朗读。语音唤醒由 `WakeWordService` 和 `VoiceWakeController` 处理。
+Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay` 管理悬浮面板；`MediaPauseMonitor` 监听播放，`ImageWatchMonitor` 在图片自动描述开启时扫描前台控件树寻找无文字说明的大图（解读规则、去抖、冷却和图像指纹在纯 Java 的 `ImageWatchPolicy`），`ScreenshotEncoder` 负责裁剪、压缩与指纹，`AssistantApi` 调用服务，`Narrator` 朗读。语音唤醒由 `WakeWordService` 和 `VoiceWakeController` 处理，`ScreenCommand` 把口令映射到有限的动作。
 
-主流程：**语音命令／已开启的暂停检测 → 截图 → HTTP 服务 → 模型适配器 → 结果校验 → 朗读**。恢复播放或停止命令会取消当前自动讲解。
+主流程：**语音命令／已开启的暂停检测／已开启的图片自动描述 → 截图（自动图片裁剪到图片区域）→ HTTP 服务 → 模型适配器 → 结果校验 → 朗读**。恢复播放、滚动、切换应用或停止命令会取消当前自动讲解；“停止监控屏幕”与“停止”关闭全部自动模式但保留语音待命。
+
+无障碍服务声明（`res/xml/screen_assistant.xml`）需要 `canRetrieveWindowContent="true"` 并订阅 `typeWindowContentChanged|typeViewScrolled`，仅供图片自动描述使用；服务在该模式关闭时不调用 `getRootInActiveWindow()`。修改这一点时同步更新 `strings.xml` 里的服务描述。
 
 ## 构建 Android
 
@@ -27,9 +29,11 @@ Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay
 powershell -ExecutionPolicy Bypass -File native/android/build-debug.ps1 -JavaHome 'JDK目录' -SdkRoot 'Android SDK目录'
 ```
 
-首次克隆后先运行 `npm ci`，并按[服务端说明](../server/README.md)从 `.env.example` 创建 `.env`；默认端口为 `8787`。上述构建脚本下载并校验内置 Vosk 中文模型，再调用 Gradle，首次构建需要联网。安装包输出到 `native/android/app/build/outputs/apk/debug/app-debug.apk`；模型许可见[第三方声明](../native/android/THIRD_PARTY_NOTICES.md)。
+首次克隆后先运行 `npm ci`，并按[服务端说明](../server/README.md)从 `.env.example` 创建 `.env`；默认端口为 `8787`。上述构建脚本下载并校验内置 Vosk 中文模型（默认大模型 `vosk-model-cn-0.22`，约 1.27 GiB，首次下载较慢；低存储设备可先运行 `node native/android/prepare-voice-model.mjs --small` 改用约 42 MiB 的小模型），再调用 Gradle，首次构建需要联网。安装包输出到 `native/android/app/build/outputs/apk/debug/app-debug.apk`；模型许可见[第三方声明](../native/android/THIRD_PARTY_NOTICES.md)。
 
-已配置 Java 和 SDK 的其他平台，可先运行 `node native/android/prepare-voice-model.mjs`，再进入 `native/android` 运行 `./gradlew :app:assembleDebug`。iPhone 构建见 [iOS 说明](../native/ios/README.md)。
+已配置 Java 和 SDK 的其他平台，可先运行 `node native/android/prepare-voice-model.mjs`（可加 `--small`），再进入 `native/android` 运行 `./gradlew :app:assembleDebug`。iPhone 构建见 [iOS 说明](../native/ios/README.md)。
+
+大模型对真人口音、噪声和远场麦克风的识别明显更好，代价是 APK 体积增大、首次解压需要约 2 GiB 存储、识别时内存占用明显更高。手机上切换模型版本后，首次开启语音待命会重新解压并清理旧模型。
 
 安装：`adb install -r native/android/app/build/outputs/apk/debug/app-debug.apk`。测试暂停讲解可使用[动态视频演示](../demo/android/README.md)。
 
@@ -41,7 +45,7 @@ npm test
 powershell -ExecutionPolicy Bypass -File native/android/test-commands.ps1 -JavaHome 'JDK目录'
 ```
 
-TypeScript 测试覆盖模型请求、格式校验、鉴权、限流、超时和取消；Java 检查覆盖命令、唤醒和暂停策略。模型响应在自动化测试中使用替身，真实识别另行联调。
+TypeScript 测试覆盖模型请求、格式校验、鉴权、限流、超时和取消；Java 检查覆盖命令、唤醒、暂停策略和图片自动描述策略。模型响应在自动化测试中使用替身，真实识别另行联调。合成语音回录（13 段）通过 `VoiceModelInstrumentation` 跑真实 Vosk 模型；更换模型版本后必须重跑。
 
 备用 Web 原型使用 `npm run build:web` 构建、`npm run test:e2e` 检查；Android / iOS 资源导出使用 `npm run build:native`。
 

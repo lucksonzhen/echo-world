@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -21,13 +22,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Captures after an explicit command or an enabled, confirmed foreground playback pause.
- * Accessibility events supply package names only; this service never retrieves UI nodes.
+ * Captures after an explicit command, an enabled and confirmed foreground playback pause, or, when
+ * automatic image description is on, a prominent unlabeled picture found in the foreground window.
+ * Node inspection happens only in that last mode, stays on this device, and is limited to class
+ * names, labels and bounds; screenshots for it are cropped to the picture.
  */
 public final class ScreenAssistantService extends AccessibilityService {
     private static final int VIDEO_FRAMES = 6;
     private static final long FRAME_INTERVAL_MS = 1500L;
     private static final long OVERLAY_HIDE_MS = 150L;
+    private static final String MONITOR_STOPPED = "已停止监控屏幕。图片自动描述和暂停讲解已关闭，语音待命保留，随时可说小助手描述屏幕。";
     private static WeakReference<ScreenAssistantService> instance = new WeakReference<>(null);
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -45,8 +49,13 @@ public final class ScreenAssistantService extends AccessibilityService {
     private Narrator narrator;
     private Session active;
     private MediaPauseMonitor pauseMonitor;
+    private ImageWatchMonitor imageWatch;
     private boolean pauseEnabled;
+    private boolean imageWatchEnabled;
+    /** A pause-triggered narration is playing; playback or app changes cancel it. */
     private boolean automaticNarration;
+    /** An image-triggered narration is playing; scrolling or app changes cancel it. */
+    private boolean automaticImageNarration;
     private long ignorePauseUntil;
 
     private static final class Session {
@@ -55,15 +64,25 @@ public final class ScreenAssistantService extends AccessibilityService {
         final String mode;
         final String question;
         final String packageName;
+        /** Triggered by a confirmed playback pause. */
         final boolean automatic;
+        /** Triggered by the image watch; {@link #crop} then bounds the picture. */
+        final boolean autoImage;
+        final Rect crop;
         final long startedAt = SystemClock.uptimeMillis();
         final List<ScreenFrame> frames = new ArrayList<>();
         long firstScreenshotAt = -1L;
+        long imageHash;
         boolean submitted;
 
         Session(long id, boolean video, String mode, String question, String packageName, boolean automatic) {
+            this(id, video, mode, question, packageName, automatic, null);
+        }
+
+        Session(long id, boolean video, String mode, String question, String packageName, boolean automatic, Rect crop) {
             this.id = id; this.video = video; this.mode = mode;
             this.question = question; this.packageName = packageName; this.automatic = automatic;
+            this.autoImage = crop != null; this.crop = crop;
         }
     }
 
@@ -135,9 +154,11 @@ public final class ScreenAssistantService extends AccessibilityService {
                 if (pauseEnabled) setStatus(reason + " 仍可说小助手描述屏幕。");
             }
         });
+        imageWatch = new ImageWatchMonitor(this, main, this::describeFoundImage);
         connected = true;
         instance = new WeakReference<>(this);
         if (settings.isPauseDescriptionEnabled() && settings.isConsentGranted() && MediaPauseMonitor.hasAccess(this)) setPauseMode(true);
+        if (settings.isImageWatchEnabled() && settings.isConsentGranted()) setImageWatch(true);
         try {
             overlay = new AssistantOverlay(this, new AssistantOverlay.Listener() {
                 @Override public void onCommand(String command) { handleCommand(command); }
@@ -161,7 +182,7 @@ public final class ScreenAssistantService extends AccessibilityService {
 
     private void updatePanel() {
         if (connected && overlay != null) {
-            overlay.render(active != null, pauseEnabled, statusMessage, latestDescription);
+            overlay.render(active != null, pauseEnabled, imageWatchEnabled, statusMessage, latestDescription);
         }
     }
 
@@ -192,11 +213,26 @@ public final class ScreenAssistantService extends AccessibilityService {
     private void handleCommand(String text) {
         if (!connected) return;
         ScreenCommand command = ScreenCommand.parse(text == null ? "" : text);
-        if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser(); return; }
-        if (command.kind == ScreenCommand.Kind.PAUSE_STOP) { stopFromUser(); return; }
+        if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser("已停止。"); return; }
+        if (command.kind == ScreenCommand.Kind.MONITOR_STOP) { stopFromUser(MONITOR_STOPPED); return; }
+        if (command.kind == ScreenCommand.Kind.PAUSE_STOP) {
+            cancelCurrent();
+            setPauseMode(false);
+            updatePanel();
+            report("暂停讲解已关闭。", true);
+            return;
+        }
+        if (command.kind == ScreenCommand.Kind.AUTO_IMAGE_STOP) {
+            cancelCurrent();
+            setImageWatch(false);
+            updatePanel();
+            report("图片自动描述已关闭。", true);
+            return;
+        }
         if (command.kind == ScreenCommand.Kind.FASTER || command.kind == ScreenCommand.Kind.SLOWER
                 || command.kind == ScreenCommand.Kind.NORMAL_RATE) { changeSpeechRate(command.kind); return; }
         if (command.kind == ScreenCommand.Kind.PAUSE_START && pauseEnabled) { report("暂停讲解已经开启。", true); return; }
+        if (command.kind == ScreenCommand.Kind.AUTO_IMAGE_START && imageWatchEnabled) { report("图片自动描述已经开启。", true); return; }
         cancelCurrent();
         if (!settings.isConsentGranted()) {
             report("请先打开听见屏幕应用，阅读并同意按指令采集画面及上传识别的说明。", true);
@@ -208,6 +244,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         }
         if (screenUnavailable()) { report("屏幕已锁定或关闭，请解锁后再描述。", true); return; }
         if (command.kind == ScreenCommand.Kind.PAUSE_START) { startPauseMode(); return; }
+        if (command.kind == ScreenCommand.Kind.AUTO_IMAGE_START) { startImageWatch(); return; }
         boolean video = command.kind == ScreenCommand.Kind.VIDEO;
         String mode = command.kind == ScreenCommand.Kind.READ_TEXT ? "text" : "detailed";
         String question = command.kind == ScreenCommand.Kind.QUESTION ? command.text : null;
@@ -247,6 +284,21 @@ public final class ScreenAssistantService extends AccessibilityService {
         if (enabled) { pauseMonitor.setTargetPackage(foregroundPackage); pauseMonitor.start(); }
     }
 
+    private void startImageWatch() {
+        setImageWatch(true);
+        report("图片自动描述已开启。浏览时遇到较大的图片会自动简短描述；说小助手停止监控屏幕即可关闭。", true);
+        updatePanel();
+        // Look at the page that is already open once the confirmation has been spoken.
+        imageWatch.onScreenChanged(foregroundPackage);
+    }
+
+    private void setImageWatch(boolean enabled) {
+        imageWatchEnabled = enabled;
+        settings.setImageWatchEnabled(enabled);
+        imageWatch.stop();
+        if (enabled) { imageWatch.setTargetPackage(foregroundPackage); imageWatch.start(); }
+    }
+
     private void describePausedFrame(String packageName) {
         if (!connected || !pauseEnabled || !foregroundPackage.equals(packageName)
                 || !settings.isConsentGranted() || screenUnavailable() || active != null
@@ -262,6 +314,24 @@ public final class ScreenAssistantService extends AccessibilityService {
         capture(session);
     }
 
+    private void describeFoundImage(String packageName, Rect bounds) {
+        if (!connected || !imageWatchEnabled || !foregroundPackage.equals(packageName)
+                || !settings.isConsentGranted() || screenUnavailable()
+                || settings.getServerUrl().trim().isEmpty()) return;
+        if (active != null || narrator.isSpeaking()) {
+            // Busy with a request or speech; look again once the screen has been quiet.
+            imageWatch.onScreenChanged(packageName);
+            return;
+        }
+        cancelCurrent();
+        latestDescription = "";
+        Session session = new Session(generation, false, "brief", null, packageName, false, new Rect(bounds));
+        active = session;
+        setStatus("发现图片，正在自动描述。");
+        updatePanel();
+        capture(session);
+    }
+
     private boolean current(Session session) {
         return connected && active == session && generation == session.id;
     }
@@ -272,6 +342,11 @@ public final class ScreenAssistantService extends AccessibilityService {
                 || !pauseMonitor.isStillPaused(session.packageName))) {
             cancelCurrent();
             setStatus("视频状态已变化，本次自动讲解已取消。");
+            return false;
+        }
+        if (session.autoImage && (!imageWatchEnabled || !foregroundPackage.equals(session.packageName))) {
+            cancelCurrent();
+            setStatus("页面已变化，本次图片自动描述已取消。");
             return false;
         }
         return true;
@@ -324,10 +399,17 @@ public final class ScreenAssistantService extends AccessibilityService {
     private void encode(Session session, ScreenshotResult screenshot, int timestamp) {
         if (!connected || generation != session.id) { ScreenshotEncoder.discard(screenshot); return; }
         try {
-            String dataUrl = ScreenshotEncoder.encode(screenshot);
+            ScreenshotEncoder.Encoded encoded = ScreenshotEncoder.encode(screenshot, session.crop);
             main.post(() -> {
                 if (!current(session)) return;
-                session.frames.add(new ScreenFrame(dataUrl, timestamp));
+                if (session.autoImage && !imageWatch.isNewImage(encoded.hash)) {
+                    // The same picture is still on screen; do not upload or speak again.
+                    cancelCurrent();
+                    setStatus("图片没有变化，未重复描述。");
+                    return;
+                }
+                session.imageHash = encoded.hash;
+                session.frames.add(new ScreenFrame(encoded.dataUrl, timestamp));
                 if (!session.video || session.frames.size() >= VIDEO_FRAMES) { submit(session); return; }
                 setStatus("正在观察视频：已采集 " + session.frames.size() + "/" + VIDEO_FRAMES + " 个画面。语音待命开启时，可说小助手停止。");
                 long delay = Math.max(0L, session.startedAt + session.frames.size() * FRAME_INTERVAL_MS - SystemClock.uptimeMillis());
@@ -342,7 +424,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         if (!ready(session)) return;
         if (!settings.isConsentGranted()) { fail(session, "授权已关闭，画面没有上传。"); return; }
         session.submitted = true;
-        setStatus("正在理解画面。语音待命开启时，可说小助手停止。");
+        setStatus(session.autoImage ? "正在理解图片。语音待命开启时，可说小助手停止。" : "正在理解画面。语音待命开启时，可说小助手停止。");
         int duration = session.video ? session.frames.get(session.frames.size() - 1).timestampMs + 1 : 0;
         api.describe(new ArrayList<>(session.frames), session.video, session.mode, session.question, duration,
                 new AssistantApi.Callback() {
@@ -351,16 +433,23 @@ public final class ScreenAssistantService extends AccessibilityService {
                         if (!settings.isConsentGranted()) { cancelCurrent(); return; }
                         active = null;
                         session.frames.clear();
-                        latestDescription = narration;
+                        String speech = session.autoImage ? "屏幕上有一张图片。" + narration : narration;
+                        latestDescription = speech;
                         automaticNarration = session.automatic;
+                        automaticImageNarration = session.autoImage;
+                        if (session.autoImage) imageWatch.onDescribed(session.imageHash);
                         setStatus("描述已完成。可展开控制，在按钮下方查看完整文字。");
                         updatePanel();
-                        narrator.speak(narration, completed -> {
-                            if (generation == session.id) automaticNarration = false;
+                        narrator.speak(speech, completed -> {
+                            if (generation == session.id) { automaticNarration = false; automaticImageNarration = false; }
                             ignorePauseUntil = SystemClock.uptimeMillis() + 1000L;
                         });
                     }
-                    @Override public void onFailure(String message) { fail(session, message); }
+                    @Override public void onFailure(String message) {
+                        // Unattended image lookups fail quietly so a flaky network does not talk over the user.
+                        if (session.autoImage && current(session)) { cancelCurrent(); setStatus(message); return; }
+                        fail(session, message);
+                    }
                 });
     }
 
@@ -379,19 +468,24 @@ public final class ScreenAssistantService extends AccessibilityService {
 
     private void fail(Session session, String message) {
         if (!current(session)) return;
+        boolean quiet = session.autoImage;
         cancelCurrent();
-        report(message, true);
+        // Screenshot problems on a page the user did not ask about are shown, not spoken.
+        report(message, !quiet);
     }
 
-    private void stopFromUser() {
+    /** Stops every unattended capture mode and the current task; voice standby is untouched. */
+    private void stopFromUser(String message) {
         cancelCurrent();
         setPauseMode(false);
+        setImageWatch(false);
         updatePanel();
-        report("已停止。", true);
+        report(message, true);
     }
 
     private void cancelCurrent() {
         automaticNarration = false;
+        automaticImageNarration = false;
         generation++;
         Session previous = active;
         active = null;
@@ -405,35 +499,54 @@ public final class ScreenAssistantService extends AccessibilityService {
         updatePanel();
     }
 
+    private boolean imageNarrationOrCapture() {
+        return automaticImageNarration || (active != null && active.autoImage);
+    }
+
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (!connected || event == null || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                || event.getPackageName() == null) return;
+        if (!connected || event == null || event.getPackageName() == null) return;
+        int type = event.getEventType();
         String packageName = event.getPackageName().toString();
+        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || type == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            // Only the watched foreground app matters; our own overlay and system windows are ignored.
+            if (!imageWatchEnabled || foregroundPackage.isEmpty() || !foregroundPackage.equals(packageName)) return;
+            if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED && imageNarrationOrCapture()) {
+                cancelCurrent();
+                setStatus("页面已滚动，自动描述已取消。");
+            }
+            imageWatch.onScreenChanged(packageName);
+            return;
+        }
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         if (getPackageName().equals(packageName)) {
             if (MainActivity.class.getName().contentEquals(event.getClassName() == null ? "" : event.getClassName())) {
                 foregroundPackage = "";
                 cancelCurrent();
                 pauseMonitor.setTargetPackage("");
+                imageWatch.setTargetPackage("");
             }
             return;
         }
-        // Never mistake notification shade / permission-dialog pixels for the paused video.
+        // Never mistake notification shade / permission-dialog pixels for the paused video or a picture.
         if ("com.android.systemui".equals(packageName) || "android".equals(packageName)) {
             foregroundPackage = "";
-            if (automaticNarration || (active != null && active.automatic)) cancelCurrent();
+            if (automaticNarration || (active != null && active.automatic) || imageNarrationOrCapture()) cancelCurrent();
             pauseMonitor.setTargetPackage("");
+            imageWatch.setTargetPackage("");
             return;
         }
-        if (!foregroundPackage.equals(packageName) && automaticNarration) {
+        if (!foregroundPackage.equals(packageName) && (automaticNarration || automaticImageNarration)) {
             cancelCurrent();
         }
         foregroundPackage = packageName;
         pauseMonitor.setTargetPackage(packageName);
+        imageWatch.setTargetPackage(packageName);
         Session session = active;
         if (session != null && !session.packageName.isEmpty()
                 && !session.packageName.equals(packageName)) {
             fail(session, "前台应用已切换，已停止采集。请在想了解的页面重新发出指令。");
         }
+        if (imageWatchEnabled) imageWatch.onScreenChanged(packageName);
     }
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
@@ -443,6 +556,7 @@ public final class ScreenAssistantService extends AccessibilityService {
                 cancelCurrent();
                 foregroundPackage = "";
                 pauseMonitor.setTargetPackage("");
+                imageWatch.setTargetPackage("");
                 if (wasActive) report("屏幕已关闭，已停止处理。", true);
             }
         }
@@ -464,6 +578,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         if (instance.get() == this) instance.clear();
         WakeWordService.stopListening(this);
         if (pauseMonitor != null) pauseMonitor.stop();
+        if (imageWatch != null) imageWatch.stop();
         main.removeCallbacksAndMessages(null);
         if (receiverRegistered) { unregisterReceiver(screenReceiver); receiverRegistered = false; }
         if (overlay != null) { overlay.close(); overlay = null; }

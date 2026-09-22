@@ -278,9 +278,10 @@ public final class VoiceWakeControllerTest {
         Fixture f = new Fixture();
         f.controller.start();
         f.controller.setNarrating(true);
-        String[] commands = { "说快一点", "说慢一点", "正常语速", "关闭暂停讲解" };
+        String[] commands = { "说快一点", "说慢一点", "正常语速", "关闭暂停讲解", "停止监控屏幕", "关闭图片自动描述" };
         ScreenCommand.Kind[] kinds = { ScreenCommand.Kind.FASTER, ScreenCommand.Kind.SLOWER,
-                ScreenCommand.Kind.NORMAL_RATE, ScreenCommand.Kind.PAUSE_STOP };
+                ScreenCommand.Kind.NORMAL_RATE, ScreenCommand.Kind.PAUSE_STOP,
+                ScreenCommand.Kind.MONITOR_STOP, ScreenCommand.Kind.AUTO_IMAGE_STOP };
         for (int index = 0; index < commands.length; index++) {
             f.controller.onFinal(commands[index]);
             check(f.commands.size() == index, "unprefixed control rejected during narration");
@@ -289,7 +290,10 @@ public final class VoiceWakeControllerTest {
             f.now += 2000;
         }
         f.controller.onFinal("小助手开启暂停讲解");
-        check(f.commands.size() == 4, "narration cannot start a new automatic capture mode");
+        check(f.commands.size() == 6, "narration cannot start a new automatic capture mode");
+        f.now += 2000;
+        f.controller.onFinal("小助手开启图片自动描述");
+        check(f.commands.size() == 6, "narration cannot start automatic image description");
     }
 
     private static void finalStartsPauseNarration() {
