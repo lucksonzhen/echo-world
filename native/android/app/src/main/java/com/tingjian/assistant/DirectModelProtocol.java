@@ -131,10 +131,37 @@ public final class DirectModelProtocol {
     private static IllegalStateException invalid() { return new IllegalStateException("模型返回格式不完整或不兼容，请选择支持图片输入的模型后重试。"); }
     private static IllegalStateException refused() { return new IllegalStateException("模型未能描述这张画面，请换一张普通图片再试。"); }
     public static String httpError(int status) {
-        if (status == 401 || status == 403) return "API Key 无效或没有权限，请检查密钥、模型授权及地区限制。";
-        if (status == 429) return "API 配额不足或请求过于频繁，请检查余额并稍后重试。";
-        if (status == 400 || status == 404 || status == 422) return "API 地址、模型名称或图片请求格式不受支持，请检查设置。";
-        if (status >= 300 && status < 400) return "API 地址发生重定向；为保护密钥已停止，请填写服务商的最终 HTTPS 地址。";
-        return "模型服务暂时不可用（HTTP " + status + "），请稍后重试。";
+        return httpError(status, null);
+    }
+    /** Only fixed local messages are displayed; upstream strings can contain secrets or images. */
+    public static String httpError(int status, JSONObject envelope) {
+        String prefix = "HTTP " + status + "：";
+        JSONObject error = envelope == null ? null : envelope.optJSONObject("error");
+        if (error != null) {
+            JSONArray details = error.optJSONArray("details");
+            if (details != null) for (int i = 0; i < details.length(); i++) {
+                JSONObject detail = details.optJSONObject(i);
+                String reason = detail == null ? "" : detail.optString("reason");
+                if ("API_KEY_INVALID".equals(reason) || "API_KEY_EXPIRED".equals(reason))
+                    return prefix + "API Key 无效或已过期，请在 Google AI Studio 检查密钥后重新填写。";
+                if (reason.startsWith("API_KEY_") && reason.endsWith("_BLOCKED"))
+                    return prefix + "密钥的应用或 API 限制阻止了请求，请检查该密钥的限制设置。";
+                if ("SERVICE_DISABLED".equals(reason)) return prefix + "该项目未启用所需 API，请在 Google 项目中检查服务设置。";
+            }
+            String message = error.optString("message").toLowerCase(java.util.Locale.ROOT);
+            if (message.contains("api key not valid") || message.contains("api key expired") || message.contains("api key was reported as leaked"))
+                return prefix + "API Key 无效、过期或已被停用，请在 Google AI Studio 检查并更换密钥。";
+            if (message.contains("user location is not supported") || message.contains("not available in your country"))
+                return prefix + "服务商不支持当前请求所在地区，请检查官方可用地区说明。";
+            if ("FAILED_PRECONDITION".equals(error.optString("status")))
+                return prefix + "账户尚不满足调用条件，请检查项目计费、免费层和地区可用性。";
+        }
+        if (status == 401 || status == 403) return prefix + "认证或权限被拒绝，请检查密钥、模型授权及密钥限制。";
+        if (status == 402) return prefix + "账户计费或余额不足，请检查服务商计费设置。";
+        if (status == 429) return prefix + "API 配额不足或请求过于频繁，请检查配额后重试。";
+        if (status == 404) return prefix + "模型或接口不存在，或当前密钥无法使用它。Gemini 用户请获取模型列表后重新选择并测试。";
+        if (status == 400 || status == 422) return prefix + "请求参数被拒绝。请先测试小图；若也失败，请检查模型是否支持图片输入和 JSON 输出。";
+        if (status >= 300 && status < 400) return prefix + "API 地址发生重定向；为保护密钥已停止，请填写服务商的最终 HTTPS 地址。";
+        return prefix + "模型服务暂时不可用，请稍后重试。";
     }
 }

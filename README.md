@@ -14,8 +14,8 @@ An AI screen companion that turns visual content into spoken understanding.
 
 ### Android 手机直连版（无需电脑）
 
-1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.2.0 手机直连试用包，可覆盖此前 1.1.0 试用包。要求 Android 11+。
-2. 默认选择 **Gemini 官方 API**，官方地址已填好；在手机输入自己的 Gemini API Key，按账号可用模型确认或修改模型名。手机网络必须能访问 Gemini API。
+1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.2.1 手机直连试用包，可覆盖此前 1.1.0 / 1.2.0 试用包。要求 Android 11+。
+2. 默认选择 **Gemini 官方 API**，官方地址已填好；在手机输入自己的 Gemini API Key，可点“获取 Gemini 模型列表”选择候选模型。手机网络必须能访问 Gemini API。
 3. 点“保存并测试识图连接”：仅发送应用生成的几何图形，不截图，会产生一次 API 调用。测试成功后阅读并勾选屏幕识别说明。
 4. 开启“听见世界助手”无障碍服务；按需允许麦克风并开启语音待命。返回图片或视频 App，说“小助手，描述屏幕”。
 
@@ -26,6 +26,12 @@ API Key 用 Android Keystore 加密保存在手机；不会内置公共密钥，
 按 [服务端说明](server/README.md) 在电脑或服务器配置 `.env`，运行 `npm install` 和 `npm run server:local`。Android 可选“原有中转服务”，但手机直连试用构建只接受 HTTPS；仅 debug 构建允许开发用 HTTP。
 
 常用命令：**描述屏幕、读文字、再说一遍、看看视频、开启／关闭暂停讲解、开启／关闭图片自动描述、停止监控屏幕、快一点／慢一点、停止**，前面加“小助手”。
+
+### Android 1.2.1 更新
+
+- 拆分此前合并的 HTTP 400 / 404 / 422 提示，显示状态码，安全识别常见密钥、地区和账户条件错误。
+- 从官方 API 获取当前密钥返回的 Gemini 候选模型，不上传截图或调用生成接口；选择后仍需小图测试。
+- 连接结果同时显示在测试按钮下方，避免必须回到页面顶部查错。
 
 ### Android 1.2.0 更新
 

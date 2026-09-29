@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Direct provider requests use the owner's encrypted local key; screenshots remain memory-only. */
 public final class AssistantApi {
     public interface Callback { void onSuccess(String narration); void onFailure(String error); }
+    public interface ModelsCallback { void onSuccess(List<String> models); void onFailure(String error); }
     interface ConnectionFactory { HttpURLConnection open(URL url) throws Exception; }
     private final Context context;
     private final SettingsStore settings;
@@ -44,6 +45,55 @@ public final class AssistantApi {
     }
     /** Sends a generated geometric test image, never the user's screen. This may incur an API charge. */
     public void check(Callback callback) { request(new ArrayList<>(), false, "brief", null, 0, true, callback); }
+    /** Lists candidates without uploading images or generating content; does not change saved settings. */
+    public void listGeminiModels(String base, String key, ModelsCallback callback) {
+        String endpoint = DirectApiConfig.validateBaseUrl("gemini", base, false);
+        DirectApiConfig.validateKey("gemini", key);
+        cancel();
+        int id = generation.get();
+        io.execute(() -> {
+            Runnable deadline = () -> {
+                if (id == generation.get()) { cancel(); callback.onFailure("获取模型列表超时，请检查手机网络。"); }
+            };
+            main.postDelayed(deadline, 90000);
+            try {
+                java.util.Set<String> models = new java.util.TreeSet<>();
+                java.util.Set<String> pages = new java.util.HashSet<>();
+                String page = "";
+                do {
+                    if (id != generation.get()) return;
+                    if (!pages.add(page) || pages.size() > 10) throw new IllegalStateException("模型列表分页异常，请稍后重试。");
+                    String address = endpoint + "/models?pageSize=1000" + (page.isEmpty() ? "" : "&pageToken=" + java.net.URLEncoder.encode(page, "UTF-8"));
+                    HttpURLConnection connection = open(address, "gemini", key); active = connection;
+                    try {
+                        if (id != generation.get()) return;
+                        int status = connection.getResponseCode();
+                        if (status < 200 || status >= 300) throw new IllegalStateException(readHttpError(connection, status));
+                        JSONObject response = read(connection);
+                        JSONArray entries = response.optJSONArray("models");
+                        if (entries != null) for (int i = 0; i < entries.length(); i++) {
+                            JSONObject entry = entries.optJSONObject(i);
+                            if (entry == null) continue;
+                            JSONArray methods = entry.optJSONArray("supportedGenerationMethods");
+                            if (methods == null) continue;
+                            for (int j = 0; j < methods.length(); j++) if ("generateContent".equals(methods.optString(j))) {
+                                String name = entry.optString("name");
+                                if (name.matches("models/gemini-[A-Za-z0-9._-]+")) models.add(DirectApiConfig.validateModel("gemini", name));
+                            }
+                        }
+                        page = response.optString("nextPageToken");
+                        if (page.length() > 4096) throw new IllegalStateException("模型列表分页异常，请稍后重试。");
+                    } finally { connection.disconnect(); if (active == connection) active = null; }
+                } while (!page.isEmpty());
+                if (models.isEmpty()) throw new IllegalStateException("此密钥未返回支持 generateContent 的 Gemini 模型，请检查项目和密钥权限。");
+                List<String> result = new ArrayList<>(models);
+                main.post(() -> { if (id == generation.get()) callback.onSuccess(result); });
+            } catch (Exception error) {
+                String message = error instanceof IllegalStateException ? error.getMessage() : "无法获取模型列表，请检查手机网络和 API Key。";
+                main.post(() -> { if (id == generation.get()) callback.onFailure(message); });
+            } finally { main.removeCallbacks(deadline); }
+        });
+    }
     private void request(List<ScreenFrame> frames, boolean video, String mode, String question, int durationMs, boolean test, Callback callback) {
         cancel();
         int id = generation.get();
@@ -65,7 +115,7 @@ public final class AssistantApi {
                     connection = open(base + "/api/health", snapshot); active = connection;
                     if (id != generation.get()) return;
                     int status = connection.getResponseCode();
-                    if (status != 200) throw new IllegalStateException(DirectModelProtocol.httpError(status));
+                    if (status != 200) throw new IllegalStateException(readHttpError(connection, status));
                     JSONObject result = read(connection);
                     if (!"ok".equals(result.optString("status"))) throw new IllegalStateException("此地址不是听见世界描述服务。");
                     String message = result.optBoolean("configured") ? "中转服务已连接；实际图片识别仍需测试。" : "中转服务未配置 AI 密钥。";
@@ -101,8 +151,7 @@ public final class AssistantApi {
                     }
                 }
                 int status = connection.getResponseCode();
-                // Never relay upstream error bodies: gateways may echo credentials or image data.
-                if (status < 200 || status >= 300) throw new IllegalStateException(DirectModelProtocol.httpError(status));
+                if (status < 200 || status >= 300) throw new IllegalStateException(readHttpError(connection, status));
                 JSONObject result = read(connection);
                 if (snapshot.isDirect()) result = DirectModelProtocol.result(snapshot.provider, result, frames, video, question);
                 else DirectModelProtocol.validateResult(result, frames, video, question);
@@ -121,14 +170,24 @@ public final class AssistantApi {
         });
     }
     private HttpURLConnection open(String endpoint, SettingsStore.ConnectionSnapshot snapshot) throws Exception {
+        return open(endpoint, snapshot.provider, snapshot.accessToken);
+    }
+    private HttpURLConnection open(String endpoint, String provider, String key) throws Exception {
         HttpURLConnection connection = connections.open(new URL(endpoint));
         connection.setConnectTimeout(15000); connection.setReadTimeout(70000);
         connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
-        if (!snapshot.accessToken.isEmpty()) {
-            if ("gemini".equals(snapshot.provider)) connection.setRequestProperty("x-goog-api-key", snapshot.accessToken);
-            else connection.setRequestProperty("Authorization", "Bearer " + snapshot.accessToken);
+        if (!key.isEmpty()) {
+            if ("gemini".equals(provider)) connection.setRequestProperty("x-goog-api-key", key);
+            else connection.setRequestProperty("Authorization", "Bearer " + key);
         }
         return connection;
+    }
+    private static String readHttpError(HttpURLConnection connection, int status) {
+        try (InputStream input = connection.getErrorStream()) {
+            if (input != null) return DirectModelProtocol.httpError(status,
+                    new JSONObject(new String(readBytes(input, 32768), StandardCharsets.UTF_8)));
+        } catch (Exception ignored) { /* Preserve HTTP diagnosis even for HTML, oversized or unreadable errors. */ }
+        return DirectModelProtocol.httpError(status);
     }
     private static JSONObject read(HttpURLConnection connection) throws Exception {
         try (InputStream input = connection.getInputStream()) {

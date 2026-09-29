@@ -67,6 +67,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
             return status;
         }
         @Override public InputStream getInputStream() { return new ByteArrayInputStream(response); }
+        @Override public InputStream getErrorStream() { return new ByteArrayInputStream(response); }
     }
     private static final class Reply implements AssistantApi.Callback {
         final CountDownLatch done = new CountDownLatch(1);
@@ -142,6 +143,45 @@ public final class DirectApiInstrumentation extends Instrumentation {
                 } finally { client.close(); }
             }
             settings.revokeConsent();
+            String[] errors = {
+                "{\"error\":{\"message\":\"" + KEY + "\",\"details\":[{\"reason\":\"API_KEY_INVALID\"}]}}",
+                "{\"error\":{\"status\":\"FAILED_PRECONDITION\",\"message\":\"" + KEY + "\"}}",
+                "{\"error\":{\"message\":\"User location is not supported for the API use.\"}}",
+                "{\"error\":{\"message\":\"" + KEY + "\"}}", "<html>" + KEY,
+                String.join("", Collections.nCopies(40000, "x"))
+            };
+            String[] expected = {"API Key 无效", "调用条件", "所在地区", "请求参数", "请求参数", "请求参数"};
+            for (int i = 0; i < errors.length; i++) {
+                final String body = errors[i];
+                AssistantApi client = new AssistantApi(getTargetContext(), url -> new FakeConnection(url, 400, body));
+                try {
+                    Reply reply = new Reply(); client.check(reply); reply.await();
+                    check(reply.error != null && reply.error.contains("HTTP 400") && reply.error.contains(expected[i]) && !reply.error.contains(KEY), "400 diagnosis safely classified " + i);
+                } finally { client.close(); }
+            }
+            check(DirectModelProtocol.httpError(404).contains("模型或接口不存在"), "404 separated from invalid arguments");
+            AtomicInteger pages = new AtomicInteger();
+            java.util.List<FakeConnection> listed = new java.util.ArrayList<>();
+            AssistantApi discovery = new AssistantApi(getTargetContext(), url -> {
+                int page = pages.incrementAndGet();
+                String response = page == 1
+                    ? "{\"models\":[{\"name\":\"models/gemini-test\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/gemini-embedding\",\"supportedGenerationMethods\":[\"embedContent\"]}],\"nextPageToken\":\"a+/=&b\"}"
+                    : "{\"models\":[{\"name\":\"models/gemini-test\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/gemini-other\",\"supportedGenerationMethods\":[\"generateContent\"]}]}";
+                FakeConnection fake = new FakeConnection(url, 200, response); listed.add(fake); return fake;
+            });
+            try {
+                CountDownLatch done = new CountDownLatch(1);
+                AtomicReference<List<String>> result = new AtomicReference<>();
+                discovery.listGeminiModels(DirectApiConfig.defaultUrl("gemini"), KEY, new AssistantApi.ModelsCallback() {
+                    public void onSuccess(List<String> models) { result.set(models); done.countDown(); }
+                    public void onFailure(String message) { done.countDown(); }
+                });
+                check(done.await(8, TimeUnit.SECONDS) && result.get() != null, "model list works without screen consent");
+                check(result.get().equals(Arrays.asList("gemini-other", "gemini-test")), "model candidates filtered sorted and deduplicated");
+                check(pages.get() == 2 && listed.get(1).getURL().toString().endsWith("pageToken=a%2B%2F%3D%26b"), "model pagination token safely encoded");
+                check(listed.stream().allMatch(c -> "GET".equals(c.getRequestMethod()) && c.body.size() == 0 && KEY.equals(c.getRequestProperty("x-goog-api-key")) && !c.getURL().toString().contains(KEY) && !c.getInstanceFollowRedirects()), "model discovery has no images generation or URL credentials");
+                check(!settings.isConsentGranted() && settings.getModel().equals(DirectApiConfig.defaultModel("gemini")), "discovery does not save model or grant consent");
+            } finally { discovery.close(); }
             AtomicInteger connections = new AtomicInteger();
             AssistantApi noConsent = new AssistantApi(getTargetContext(), url -> { connections.incrementAndGet(); return new FakeConnection(url, 200, envelope("gemini", description()).toString()); });
             try {

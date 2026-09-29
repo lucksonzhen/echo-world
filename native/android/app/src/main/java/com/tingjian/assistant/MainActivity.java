@@ -37,12 +37,12 @@ public final class MainActivity extends Activity {
     private SettingsStore store;
     private AssistantApi api;
     private EditText url, token, model;
-    private TextView urlLabel, tokenLabel, connectionHelp;
+    private TextView urlLabel, tokenLabel, connectionHelp, connectionStatus;
     private Spinner provider;
     private String selectedProvider;
     private CheckBox consent;
     private TextView status;
-    private Button checkConnectionButton, enableAssistantButton, enableVoiceButton;
+    private Button checkConnectionButton, enableAssistantButton, enableVoiceButton, modelsButton;
     private boolean checkingConnection;
     private boolean resumed, pendingVoiceStart;
     private final Handler main = new Handler();
@@ -85,6 +85,7 @@ public final class MainActivity extends Activity {
         token.setSaveEnabled(false);
         try { token.setText(store.getAccessToken()); } catch (Exception error) { report(error.getMessage()); }
         connectionHelp = text(body,"",14);
+        modelsButton = button(body,"获取 Gemini 模型列表",this::fetchModels);
         updateConnectionFields();
         text(body,"密钥使用 Android Keystore 加密保存在本机，不写入安装包或日志。更换接口类型或地址会清空输入框，需重新输入密钥。API 调用可能产生服务商费用。",14);
         button(body,"清除本机密钥",() -> {
@@ -106,6 +107,7 @@ public final class MainActivity extends Activity {
                 public void onFailure(String message) { setCheckingConnection(false); report(message); }
             });
         });
+        connectionStatus = text(body,"连接测试结果会显示在这里。",16);
         enableAssistantButton = button(body,"开启屏幕读取服务",() -> {
             if (checkingConnection) return;
             if (!consent.isChecked()) { report("请先阅读并勾选屏幕识别说明，再开启助手。"); return; }
@@ -244,6 +246,7 @@ public final class MainActivity extends Activity {
         provider.setEnabled(!checking); token.setEnabled(!checking); model.setEnabled(!checking && !"backend".equals(selectedProvider));
         url.setEnabled(!checking && ("compatible".equals(selectedProvider) || "backend".equals(selectedProvider)));
         if (checkConnectionButton != null) checkConnectionButton.setEnabled(!checking);
+        if (modelsButton != null) modelsButton.setEnabled(!checking);
         if (enableAssistantButton != null) enableAssistantButton.setEnabled(!checking);
         if (enableVoiceButton != null) enableVoiceButton.setEnabled(!checking);
         // Consent remains editable so revocation can immediately stop collection.
@@ -266,12 +269,13 @@ public final class MainActivity extends Activity {
     }
     private void updateConnectionFields() {
         boolean backend = "backend".equals(selectedProvider);
+        if (modelsButton != null) modelsButton.setVisibility("gemini".equals(selectedProvider) ? View.VISIBLE : View.GONE);
         urlLabel.setText(backend ? "中转服务地址" : "API 基础地址");
         tokenLabel.setText(backend ? "访问口令（可选）" : "API Key");
         token.setContentDescription(backend ? "中转服务访问口令" : "API Key");
         token.setHint(backend ? "中转服务设置的口令" : "填写你自己的 API Key");
         connectionHelp.setText(backend ? "兼容旧版部署。此模式需要另行运行描述服务。"
-                : "gemini".equals(selectedProvider) ? "Gemini 官方地址已填好。输入 Google AI Studio 的 API Key；模型名可按账号支持情况修改。手机网络需能访问 Gemini API。"
+                : "gemini".equals(selectedProvider) ? "Gemini 官方地址已填好。输入 Google AI Studio 的 API Key，可获取模型列表后选择。列表不保证图片识别可用，仍需测试小图。获取列表不上传图片、不调用生成接口。手机网络需能访问 Gemini API。"
                 : "openai".equals(selectedProvider) ? "OpenAI 官方地址已填好，模型需支持图片输入。"
                 : "填写服务商的 HTTPS 基础地址（通常以 /v1 结尾），不要加 /chat/completions。接口需支持图片输入及 Chat Completions。密钥只发给这个地址。" );
         setCheckingConnection(checkingConnection);
@@ -280,6 +284,24 @@ public final class MainActivity extends Activity {
         api.cancel(); setCheckingConnection(false); store.revokeConsent();
         if (consent != null) consent.setChecked(false);
         WakeWordService.stopListening(this); ScreenAssistantService.dispatchCommand("停止");
+    }
+    private void fetchModels() {
+        if (checkingConnection || !"gemini".equals(selectedProvider)) return;
+        try {
+            setCheckingConnection(true); report("正在获取 Gemini 模型列表，不会上传屏幕…");
+            api.listGeminiModels(url.getText().toString().trim(), token.getText().toString().trim(), new AssistantApi.ModelsCallback() {
+                public void onSuccess(java.util.List<String> models) {
+                    setCheckingConnection(false);
+                    report("已获取模型列表。选择后请保存并测试识图连接。");
+                    new AlertDialog.Builder(MainActivity.this).setTitle("选择模型（仍需测试识图）")
+                            .setItems(models.toArray(new String[0]), (dialog, which) -> {
+                                model.setText(models.get(which));
+                                report("已选择 " + models.get(which) + "，请点击保存并测试识图连接。");
+                            }).setNegativeButton("取消", null).show();
+                }
+                public void onFailure(String message) { setCheckingConnection(false); report(message); }
+            });
+        } catch (IllegalArgumentException error) { setCheckingConnection(false); report(error.getMessage()); }
     }
     private void openAccessibility() {
         new AlertDialog.Builder(this).setTitle("开启听见世界助手")
@@ -298,7 +320,10 @@ public final class MainActivity extends Activity {
             catch (RuntimeException fallbackUnavailable) { report("无法打开系统设置，请从手机设置中找到听见世界，检查对应权限或电池设置。"); }
         }
     }
-    private void report(String message) { if (status != null) status.setText(message); }
+    private void report(String message) {
+        if (status != null) status.setText(message);
+        if (connectionStatus != null) connectionStatus.setText(message);
+    }
     private TextView text(LinearLayout parent,String value,int sp) {
         TextView view = new TextView(this); view.setText(value); view.setTextSize(sp); view.setTextColor(INK); view.setLineSpacing(dp(5),1); view.setPadding(0,dp(8),0,dp(8)); parent.addView(view); return view;
     }
