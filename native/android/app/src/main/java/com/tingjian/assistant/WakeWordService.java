@@ -260,7 +260,7 @@ public final class WakeWordService extends Service {
     private boolean canHearCommands() {
         PowerManager power = getSystemService(PowerManager.class);
         KeyguardManager keyguard = getSystemService(KeyguardManager.class);
-        return !silenced && (setupMode ? SetupGuideActivity.isVisible() : !SetupGuideActivity.isVisible()) && power.isInteractive() && !keyguard.isKeyguardLocked();
+        return !silenced && (setupMode ? SetupGuideActivity.isVisible() : !ScreenAssistantService.areAppControlsVisible()) && power.isInteractive() && !keyguard.isKeyguardLocked();
     }
 
     private Notification notification(String text) {

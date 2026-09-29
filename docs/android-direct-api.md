@@ -1,4 +1,4 @@
-# Android 手机直连模型 API（1.5.0）
+# Android 手机直连模型 API（1.6.0）
 
 手机完成截图、帧压缩、API 请求、结果检查与朗读，不需要电脑开机、局域网或自建描述服务。Vosk 语音识别在本机完成；**画面识别仍联网发送到模型服务商**，手机必须能访问该 API。
 
@@ -69,3 +69,5 @@ adb shell am instrument -w com.tingjian.assistant.screen.test/com.tingjian.assis
 该测试会清空模拟器上的应用配置，仅使用假密钥和离线传输替身，覆盖 Gemini/OpenAI/兼容协议、AES-GCM 保存、升级迁移、错误脱敏、禁用重定向、取消及撤销同意。不能替代真实 API Key、手机网络、一加系统权限或麦克风测试。具体结果见 [验收记录](acceptance.md)。
 
 协议依据：[Gemini API](https://ai.google.dev/api)、[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。直连口述规则位于 `native/android/app/src/main/assets/description-instructions.txt`，应与 `server/description-prompt.ts` 的 `DESCRIPTION_INSTRUCTIONS` 同步维护。
+
+1.6.0 起，本文提及的保存、测试、模型选择和设置入口均通过 [底部拨轮](android-dial.md) 选择并双击执行，应用内不再显示按钮或下拉菜单。

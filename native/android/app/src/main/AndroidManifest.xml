@@ -10,7 +10,7 @@
     <application android:label="听见世界" android:theme="@style/AppTheme" android:icon="@drawable/ic_assistant"
         android:allowBackup="false" android:usesCleartextTraffic="${allowCleartext}" android:supportsRtl="true">
         <activity android:name=".SetupGuideActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".ScreenAssistantService" android:exported="true" android:label="听见世界助手" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

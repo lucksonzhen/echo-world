@@ -86,6 +86,13 @@ public final class ScreenAssistantService extends AccessibilityService {
         }
     }
 
+    private static volatile boolean appControlsVisible;
+    public static boolean areAppControlsVisible() { return appControlsVisible; }
+    public static void setAppControlsVisible(boolean visible) {
+        appControlsVisible=visible;
+        ScreenAssistantService service=instance.get();
+        if(service!=null) service.main.post(()->{ if(service.overlay!=null) service.overlay.setAppVisible(appControlsVisible); });
+    }
     public static boolean isConnected() {
         ScreenAssistantService service = instance.get();
         return service != null && service.connected;
@@ -165,6 +172,8 @@ public final class ScreenAssistantService extends AccessibilityService {
             overlay = new AssistantOverlay(this, new AssistantOverlay.Listener() {
                 @Override public void onCommand(String command) { handleCommand(command); }
                 @Override public void onVoiceSettings() { openVoiceSettings(); }
+                @Override public void onSpeak(String text) { report(text,true); }
+                @Override public void onStopSpeaking() { if(narrator!=null) narrator.stop(); }
                 @Override public void onClose() {
                     cancelCurrent();
                     overlay.announceClosed();
@@ -172,10 +181,11 @@ public final class ScreenAssistantService extends AccessibilityService {
                 }
             });
             updatePanel();
+            overlay.setAppVisible(appControlsVisible);
             overlay.show();
             report("屏幕描述服务已开启。请先打开语音待命设置，完成一次配置并开启语音待命，之后就能在其他应用中免触摸发出指令。", true);
         } catch (RuntimeException error) {
-            report("备用悬浮按钮暂不可用，仍可通过语音使用助手。", true);
+            report("底部备用拨轮暂不可用，仍可通过语音使用助手。", true);
         }
     }
 
@@ -216,8 +226,8 @@ public final class ScreenAssistantService extends AccessibilityService {
             boolean show=command.kind==ScreenCommand.Kind.OVERLAY_SHOW;
             settings.setOverlayVisible(show);
             try { if (overlay!=null) overlay.setEnabled(show); }
-            catch (RuntimeException unavailable) { report("暂时无法显示备用悬浮按钮，语音服务仍可使用。",true); return; }
-            report(show ? "已显示可移动的备用悬浮按钮。" : "已隐藏悬浮按钮，语音与屏幕读取服务继续运行。",true); return;
+            catch (RuntimeException unavailable) { report("暂时无法显示底部备用拨轮，语音服务仍可使用。",true); return; }
+            report(show ? "已开启底部备用拨轮，回到其他应用后显示。" : "已隐藏悬浮按钮，语音与屏幕读取服务继续运行。",true); return;
         }
         if (!settings.isConsentGranted()) latestDescription = "";
         if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser("已停止。"); return; }

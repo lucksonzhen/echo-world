@@ -221,6 +221,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
             check(settings.getAccessToken().isEmpty() && !settings.isConfigured() && !settings.isConsentGranted(), "clear key disables direct requests and consent");
             prefs.edit().clear().commit();
             passed += new SetupGuideChecks(this, report).run();
+            passed += new DialChecks(this, report).run();
             summary.putInt("passed", passed); summary.putInt("failed", 0); summary.putString("stream", report.toString());
             finish(Activity.RESULT_OK, summary);
         } catch (Throwable error) {

@@ -34,15 +34,10 @@ final class SetupGuideChecks {
         catch (Exception error) { throw new AssertionError(error); }
     }
     private void ui(Runnable action) { runner.runOnMainSync(action); runner.waitForIdleSync(); }
-    private Button button(View root,String text) {
-        if (root instanceof Button && text.contentEquals(((Button)root).getText())) return (Button)root;
-        if (root instanceof ViewGroup) for (int i=0;i<((ViewGroup)root).getChildCount();i++) {
-            Button found=button(((ViewGroup)root).getChildAt(i),text); if (found!=null) return found;
-        }
-        return null;
-    }
-    private void click(String text) { ui(()-> { Button b=button(activity.getWindow().getDecorView(),text); if (b==null) throw new AssertionError("Missing button "+text); b.performClick(); }); }
-    private void next() { ui(()->((Button)field("next")).performClick()); }
+    private void click(String text) { ui(()-> {
+        BottomDial.Item found=((BottomDial)field("dial")).items().stream().filter(item->text.equals(item.getText())).findFirst().orElseThrow(()->new AssertionError("Missing dial action "+text)); found.performClick();
+    }); }
+    private void next() { ui(()->((BottomDial.Item)field("next")).performClick()); }
     private void open() {
         activity=(SetupGuideActivity)runner.startActivitySync(new Intent(runner.getTargetContext(),SetupGuideActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         runner.waitForIdleSync();
@@ -55,7 +50,7 @@ final class SetupGuideChecks {
             open();
             ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"guide starts at provider for an unconfigured install"));
             ui(()->activity.handleVoice("小助手选择第二项"));
-            ui(()->check(((android.widget.Spinner)field("choices")).getSelectedItemPosition()==1,"spoken option two selects DeepSeek without locating a button"));
+            ui(()->check(((DialPicker)field("choices")).getSelectedItemPosition()==1,"spoken option two selects DeepSeek without locating a button"));
             ui(()->activity.handleVoice("小助手选择第一项"));
             ui(()->activity.handleVoice("下一步"));
             ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"unprefixed or unrelated speech cannot advance setup"));

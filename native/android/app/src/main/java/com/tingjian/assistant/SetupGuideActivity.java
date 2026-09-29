@@ -53,9 +53,10 @@ public final class SetupGuideActivity extends Activity {
     private LinearLayout body;
     private TextView instructions, feedback;
     private EditText field;
-    private Spinner choices;
+    private DialPicker choices;
+    private BottomDial dial;
     private static final String[] GUIDE_PROVIDERS={"gemini","deepseek","openai","compatible","backend"};
-    private Button next, pause;
+    private BottomDial.Item next, pause;
     private String provider, address, model, spoken = "";
     private boolean resumed, busy, paused, pendingVoice, returningSystem;
     private long request;
@@ -93,6 +94,11 @@ public final class SetupGuideActivity extends Activity {
     private void render() {
         narrator.stop(); field = null; choices = null; pendingVoiceAction=null; voiceVersion.incrementAndGet();
         screenReader=AccessibilitySupport.hasScreenReader(this);
+        if(dial!=null) dial.setActive(false);
+        dial=new BottomDial(this,new BottomDial.Feedback() {
+            public void stop() { narrator.stop(); main.removeCallbacks(announcement); voiceVersion.incrementAndGet(); voiceMuteUntil=0; }
+            public void speak(String text) { SetupGuideActivity.this.speak(text,true); }
+        });
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
         body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL); body.setPadding(32,24,32,32);
         body.setBackgroundColor(Color.rgb(246,247,242)); scroll.addView(body);
@@ -101,16 +107,14 @@ public final class SetupGuideActivity extends Activity {
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom); return insets;
         });
         label("语音配置引导", 26).setAccessibilityHeading(true);
-        label("不需要看清按钮：可用语音或系统读屏操作。",16);
+        label("底部拨轮：左右滑动，停稳听选项，双击执行。读屏模式可用双指横滑或上一项、下一项操作。",16);
         instructions = label("",20);
         String title, detail, action = "完成本项，继续";
         switch (step) {
             case PROVIDER:
                 title = "模型接口类型"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。可说小助手，选择第二项，选择 DeepSeek；选好后说小助手，下一步。默认选择 Gemini。";
-                choices = new Spinner(this); choices.setContentDescription(title);
-                ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                choices = new DialPicker(dial,label("",18),title,
                         new String[]{"Gemini 官方 API", "DeepSeek 官方 API", "OpenAI 官方 API", "自定义 OpenAI 兼容接口", "原有中转服务"});
-                choices.setAdapter(adapter); body.addView(choices);
                 for (int i=0;i<GUIDE_PROVIDERS.length;i++) if (provider.equals(GUIDE_PROVIDERS[i])) choices.setSelection(i);
                 break;
             case ADDRESS:
@@ -139,7 +143,7 @@ public final class SetupGuideActivity extends Activity {
                 break;
             case ACCESSIBILITY:
                 title = "无障碍屏幕读取服务"; action = "前往开启屏幕读取服务";
-                detail = "点击下方按钮进入系统无障碍设置，找到已下载或已安装的应用，开启听见世界助手。一加 ColorOS 可先看通用分类。手机自带读屏无需关闭。若提示受限设置，可到听见世界应用信息查看允许受限制的设置。完成后返回这里，检测到服务已连接才继续。";
+                detail = "在底部拨轮选择前往开启屏幕读取服务，双击进入系统无障碍设置，找到已下载或已安装的应用，开启听见世界助手。一加 ColorOS 可先看通用分类。手机自带读屏无需关闭。若提示受限设置，可到听见世界应用信息查看允许受限制的设置。完成后返回这里，检测到服务已连接才继续。";
                 button("打开本应用信息", () -> openSystem(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:"+getPackageName())))); break;
             case VOICE:
                 title = "免触摸语音待命，可选"; action = "允许麦克风并开启语音待命";
@@ -155,10 +159,10 @@ public final class SetupGuideActivity extends Activity {
                 detail = "如果希望语音长期待命，可在系统电池优化列表找到听见世界，选择不优化。可能增加耗电，且不能保证后台一直运行。不同手机可能还需允许后台活动。可以选择暂不调整。"; break;
             default:
                 title = "基础配置已完成"; action = "完成引导，返回应用";
-                detail = "说小助手，下一步，结束引导。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。备用悬浮按钮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
+                detail = "说小助手，下一步，结束引导。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。底部备用拨轮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
         }
-        spoken = title + "。" + detail + voiceHelp();
-        if (!setupVoiceEnabled) spoken = "首次使用语音操作，需要授权麦克风。可用系统读屏找到开启配置语音操作并双击；未开启读屏时，本页面也可按音量加键请求权限。系统授权弹窗仍需用读屏完成。" + spoken;
+        spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。" + voiceHelp();
+        if (!setupVoiceEnabled) spoken = "首次使用语音操作，需要授权麦克风。在底部拨轮找到开启配置语音操作并双击；未开启读屏时，本页面也可按音量加键请求权限。系统授权弹窗仍需用读屏完成。" + spoken;
         if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。首次麦克风授权和系统开关仍需这样操作。未开启读屏时可按本页的音量加键请求语音权限。开启读屏的快捷方式因手机设置而异。";
         instructions.setText(spoken);
         feedback = label("",16);
@@ -176,7 +180,7 @@ public final class SetupGuideActivity extends Activity {
         });
         button("中文语音设置", () -> openSystem(new Intent("com.android.settings.TTS_SETTINGS")));
         if (step != SetupFlow.Step.DONE) button("稍后配置，返回主界面",this::finish);
-        setContentView(scroll);
+        setContentView(BottomDial.page(this,scroll,dial));
         if (resumed) speak(spoken,false);
     }
 
@@ -281,7 +285,7 @@ public final class SetupGuideActivity extends Activity {
         try { startActivity(intent); } catch (RuntimeException error) { returningSystem=false; sayResult("系统未提供此入口，请从手机设置中查找对应项目，完成后返回。"); }
     }
     @Override protected void onResume() {
-        super.onResume(); resumed=true; visible=true;
+        super.onResume(); ScreenAssistantService.setAppControlsVisible(true); resumed=true; visible=true; if(dial!=null) dial.setActive(true);
         current=new java.lang.ref.WeakReference<>(this); screenReader=AccessibilitySupport.hasScreenReader(this);
         standbyAfterGuide=standbyAfterGuide || progress.getBoolean("standby_after_guide",false);
         SetupFlow.Step restored=SetupFlow.restore(step.name(),store.isConfigured(),store.isConnectionVerified(),
@@ -298,13 +302,13 @@ public final class SetupGuideActivity extends Activity {
         }
     }
     @Override protected void onPause() {
-        resumed=false; visible=false; voiceVersion.incrementAndGet(); voiceWindowEnds=0;
+        resumed=false; visible=false; if(dial!=null) dial.setActive(false); voiceVersion.incrementAndGet(); voiceWindowEnds=0;
         pendingVoiceAction=null; listenRequested=false;
         main.removeCallbacksAndMessages(null); narrator.stop(); voiceMuteUntil=0;
         if (!handingOff && WakeWordService.isSetupMode()) WakeWordService.stopListening(this);
         // A response while backgrounded must not silently advance the wizard.
         if (busy && step==SetupFlow.Step.TEST) { request++; api.cancel(); busy=false; next.setEnabled(true); feedback.setText("测试已暂停，返回后可重新点击测试。"); }
-        super.onPause();
+        ScreenAssistantService.setAppControlsVisible(false); super.onPause();
     }
     @Override protected void onDestroy() { main.removeCallbacksAndMessages(null); api.close(); narrator.shutdown(); if (listenTone!=null) listenTone.release(); super.onDestroy(); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (!focus && narrator!=null) { narrator.stop(); main.removeCallbacks(announcement); voiceWindowEnds=0; voiceMuteUntil=0; } }
@@ -325,16 +329,16 @@ public final class SetupGuideActivity extends Activity {
     private TextView label(String text,int size) {
         TextView view=new TextView(this); view.setText(text); view.setTextSize(size); view.setTextColor(Color.rgb(27,53,45)); view.setPadding(8,16,8,16); body.addView(view); return view;
     }
-    private Button button(String text,Runnable action) {
-        Button view=new Button(this); view.setText(text); view.setTextSize(18); view.setMinHeight((int)(56*getResources().getDisplayMetrics().density));
-        body.addView(view,new LinearLayout.LayoutParams(-1,-2)); view.setOnClickListener(v->action.run()); return view;
-    }
+    private BottomDial.Item button(String text,Runnable action) { return dial.add(text,action); }
+    @Override public void onBackPressed() { if(!dial.closeMenu(true)) super.onBackPressed(); }
     private void input(String title,String value,boolean secret) {
         field=new EditText(this); field.setContentDescription(title); field.setHint(title); field.setTextSize(20); field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_URI));
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO); field.setSaveEnabled(false); field.setText(value);
         field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); voiceVersion.incrementAndGet(); voiceMuteUntil=0; } });
         body.addView(field,new LinearLayout.LayoutParams(-1,-2));
+        EditText input=field;
+        dial.add("编辑"+title,()->{ if(!input.isEnabled()) { sayResult("本项已预填，无需编辑。"); return; } input.requestFocus(); getSystemService(android.view.inputmethod.InputMethodManager.class).showSoftInput(input,0); });
         body.setFocusableInTouchMode(true); body.requestFocus();
     }
 
@@ -414,7 +418,7 @@ public final class SetupGuideActivity extends Activity {
                 if (step!=SetupFlow.Step.PROVIDER) { sayResult("当前不是接口类型这一步，请先返回上一步。"); break; }
                 int selected=java.util.Arrays.asList(GUIDE_PROVIDERS).indexOf(DirectApiConfig.PROVIDERS[command.providerIndex]);
                 choices.setSelection(selected);
-                sayResult("已选择"+choices.getAdapter().getItem(selected)+"。说小助手，下一步确认。"); break;
+                sayResult("已选择"+choices.label(selected)+"。说小助手，下一步确认。"); break;
             case SKIP:
                 if (step==SetupFlow.Step.VOICE || step==SetupFlow.Step.PAUSE || step==SetupFlow.Step.IMAGES || step==SetupFlow.Step.BATTERY) skipCurrent();
                 else sayResult("当前是必要配置，不能跳过；可说小助手，稍后配置。"); break;

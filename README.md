@@ -14,7 +14,7 @@ An AI screen companion that turns visual content into spoken understanding.
 
 ### Android 手机直连版（无需电脑）
 
-1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.5.0 手机直连试用包，可覆盖此前试用包。要求 Android 11+。设置未完成时自动进入逐项语音引导。
+1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.6.0 手机直连试用包，可覆盖此前试用包。要求 Android 11+。设置未完成时自动进入逐项语音引导。
 2. 默认选择 **Gemini 官方 API**，官方地址已填好；在手机输入自己的 Gemini API Key，可点“获取 Gemini 模型列表”选择候选模型。手机网络必须能访问 Gemini API。
 3. 点“保存并测试识图连接”：仅发送应用生成的几何图形，不截图，会产生一次 API 调用。测试成功后阅读并勾选屏幕识别说明。
 4. 开启“听见世界助手”无障碍服务；按需允许麦克风并开启语音待命。返回图片或视频 App，说“小助手，描述屏幕”。
@@ -28,6 +28,14 @@ API Key 用 Android Keystore 加密保存在手机；不会内置公共密钥，
 按 [服务端说明](server/README.md) 在电脑或服务器配置 `.env`，运行 `npm install` 和 `npm run server:local`。Android 可选“原有中转服务”，但手机直连试用构建只接受 HTTPS；仅 debug 构建允许开发用 HTTP。
 
 常用命令：**描述屏幕、读文字、再说一遍、看看视频、开启／关闭暂停讲解、开启／关闭图片自动描述、停止监控屏幕、快一点／慢一点、停止**，前面加“小助手”。
+
+### Android 1.6.0 更新
+
+- 应用内按钮、下拉菜单、模型列表和上传授权选择统一为屏幕底部拨轮；上方内容滚动时位置不变，键盘出现时拨轮移到键盘上方。
+- 左右滑动切换选项，每过一档播放短促咔哒声并提供轻触觉反馈；停稳后读出序号和完整名称。单击重听，双击执行，滑动不会保存或授权。
+- 选择列表带取消返回；兼容读屏的上一项、下一项和执行操作。输入框保留，可在拨轮选择编辑或显式粘贴，密钥不读出。
+- 可选的跨应用悬浮控件也改为底部拨轮，默认隐藏，进入本应用后自动收起以避免两个拨轮重叠。日常语音指令在应用内配置时暂停，回到其他应用恢复；配置专用语音保持可用。
+- 详见 [拨轮使用说明](docs/android-dial.md)。Android 系统权限弹窗和输入法属于系统界面，不会被替换。
 
 ### Android 1.5.0 更新
 
