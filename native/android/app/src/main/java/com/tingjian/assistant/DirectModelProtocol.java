@@ -50,6 +50,9 @@ public final class DirectModelProtocol {
                         .put(new JSONObject().put("role", "user").put("content", content)));
         if ("openai".equals(provider)) body.put("store", false).put("max_completion_tokens", 4096)
                 .put("response_format", new JSONObject().put("type", "json_object"));
+        else if ("deepseek".equals(provider)) body.put("max_tokens", 4096)
+                .put("response_format", new JSONObject().put("type", "json_object"))
+                .put("thinking", new JSONObject().put("type", "disabled"));
         // Compatible services vary in their structured-output options. The prompt and validator
         // enforce the result contract without retrying a potentially billable request.
         else body.put("max_tokens", 4096);

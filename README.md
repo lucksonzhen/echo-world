@@ -8,24 +8,32 @@ An AI screen companion that turns visual content into spoken understanding.
 
 - **Android 11+**：说“小助手，描述屏幕”；可开启暂停讲解，视频暂停后自动描述当前帧；也可开启图片自动描述，浏览时遇到没有文字说明的大图自动简述；说“停止监控屏幕”关闭全部自动模式。
 - **iPhone**：通过 Siri 快捷指令“截屏 → 描述 → 朗读”。目前提供源码，需在 Mac 上构建。
-- **AI**：Android 1.2.0 支持手机直连 Gemini、OpenAI 及 OpenAI 兼容接口；语音唤醒在手机本地完成，画面直接发送到所选模型 API。Web / iOS 仍使用描述服务。
+- **AI**：Android 支持手机直连 Gemini、DeepSeek、OpenAI 及 OpenAI 兼容接口；语音唤醒在手机本地完成，画面直接发送到所选模型 API。Web / iOS 仍使用描述服务。
 
 ## 快速开始
 
 ### Android 手机直连版（无需电脑）
 
-1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.2.1 手机直连试用包，可覆盖此前 1.1.0 / 1.2.0 试用包。要求 Android 11+。
+1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.3.0 手机直连试用包，可覆盖此前试用包。要求 Android 11+。
 2. 默认选择 **Gemini 官方 API**，官方地址已填好；在手机输入自己的 Gemini API Key，可点“获取 Gemini 模型列表”选择候选模型。手机网络必须能访问 Gemini API。
 3. 点“保存并测试识图连接”：仅发送应用生成的几何图形，不截图，会产生一次 API 调用。测试成功后阅读并勾选屏幕识别说明。
 4. 开启“听见世界助手”无障碍服务；按需允许麦克风并开启语音待命。返回图片或视频 App，说“小助手，描述屏幕”。
 
 API Key 用 Android Keystore 加密保存在手机；不会内置公共密钥，也不提供免费模型额度。截图仍会离开手机发送给所选 API，这不是离线视觉模型。可用“一键清除本机密钥”停止使用。详见 [手机直连配置](docs/android-direct-api.md)。
 
+**使用 DeepSeek**：选择“DeepSeek 官方 API”，地址自动填入 `https://api.deepseek.com`，默认模型 `deepseek-flash`；输入 DeepSeek Key 后保存并测试。切换服务商需重新输入密钥并确认屏幕上传说明。
+
 ### Web / iOS 或原有中转模式
 
 按 [服务端说明](server/README.md) 在电脑或服务器配置 `.env`，运行 `npm install` 和 `npm run server:local`。Android 可选“原有中转服务”，但手机直连试用构建只接受 HTTPS；仅 debug 构建允许开发用 HTTP。
 
 常用命令：**描述屏幕、读文字、再说一遍、看看视频、开启／关闭暂停讲解、开启／关闭图片自动描述、停止监控屏幕、快一点／慢一点、停止**，前面加“小助手”。
+
+### Android 1.3.0 更新
+
+- 新增 DeepSeek 官方手机直连，预填支持图片的 `deepseek-flash`，支持屏幕描述、读字、图片与视频采样帧。
+- 使用非思考模式及 JSON 输出，沿用加密保存、结果校验和生成小图测试。无需电脑或同一局域网。
+- 依据 [DeepSeek 官方图像文档](https://api-docs.deepseek.com/guides/vision/) 实现；真实密钥调用与一加真机仍需用户验证。
 
 ### Android 1.2.1 更新
 

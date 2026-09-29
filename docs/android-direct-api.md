@@ -1,4 +1,4 @@
-# Android 手机直连模型 API（1.2.1）
+# Android 手机直连模型 API（1.3.0）
 
 手机完成截图、帧压缩、API 请求、结果检查与朗读，不需要电脑开机、局域网或自建描述服务。Vosk 语音识别在本机完成；**画面识别仍联网发送到模型服务商**，手机必须能访问该 API。
 
@@ -20,6 +20,17 @@
 官方基础地址仍为上表地址；应用自动追加 `/models/模型名:generateContent`，无需填写 `/openai/`。接口依据：[模型列表](https://ai.google.dev/api/models)、[错误排查](https://ai.google.dev/gemini-api/docs/troubleshooting)。
 
 真实使用前阅读并勾选屏幕识别说明，点“开启屏幕读取服务”。系统设置里找到“听见世界助手”；ColorOS 若有分类，先看“通用”下的已下载应用。手机自带读屏可以保留。安装包受到“受限设置”保护时，按 [Android 官方说明](https://support.google.com/android/answer/12623953?hl=zh-Hans) 查看本应用信息页是否提供允许入口，不需要关闭手机全局安全防护。
+
+## DeepSeek 官方 API
+
+1. 接口类型选择“DeepSeek 官方 API”；切换服务商会清空密钥输入框并撤销屏幕上传同意，需重新填写并保存。
+2. 基础地址自动填写 `https://api.deepseek.com`，应用追加 `/chat/completions`。
+3. 默认视觉模型 `deepseek-flash`，输入 [DeepSeek 平台](https://platform.deepseek.com/) 创建的 API Key。
+4. 点击“保存并测试识图连接”，测试成功后重新勾选屏幕识别说明并保存，再使用屏幕描述。
+
+按照当前 [官方图像文档](https://api-docs.deepseek.com/guides/vision/)，`deepseek-flash` 支持图片输入。不要使用仅支持文字的模型；模型能力及账户权限由服务商决定。截图直接发送到 DeepSeek，不经电脑或 Gemini。图片与视频采样帧采用内联图片，不调用文件上传接口。
+
+采用 [非思考模式](https://api-docs.deepseek.com/guides/thinking_mode/) 与 [JSON 输出](https://api-docs.deepseek.com/guides/json_mode/)，只朗读最终描述。密钥沿用本机加密存储、HTTPS 和重定向保护；测试与识图可能产生 DeepSeek API 费用。
 
 ## 其他接口
 

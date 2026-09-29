@@ -95,7 +95,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
             check(KEY.equals(new SettingsStore(getTargetContext()).getAccessToken()), "Keystore key survives settings reload");
             check(!prefs.getAll().toString().contains(KEY), "preferences contain no plaintext API key");
 
-            for (String provider : new String[]{"gemini", "openai", "compatible"}) {
+            for (String provider : new String[]{"gemini", "openai", "compatible", "deepseek"}) {
                 JSONObject request = DirectModelProtocol.request(provider, "vision-model", "仅描述画面", frames, false, "brief", null, 0);
                 check(!request.toString().contains(KEY), provider + " key excluded from JSON body");
                 if ("gemini".equals(provider)) {
@@ -106,6 +106,14 @@ public final class DirectApiInstrumentation extends Instrumentation {
                 JSONObject result = DirectModelProtocol.result(provider, envelope(provider, description()), frames, false, null);
                 check(result.getString("summary").contains("方块"), provider + " valid response parsed");
                 save(settings, provider, true);
+                if ("deepseek".equals(provider)) {
+                    check("disabled".equals(request.getJSONObject("thinking").getString("type"))
+                            && "json_object".equals(request.getJSONObject("response_format").getString("type"))
+                            && request.getInt("max_tokens") == 4096 && !request.has("store") && !request.has("max_completion_tokens"), "DeepSeek native options and JSON output");
+                    SettingsStore restored = new SettingsStore(getTargetContext());
+                    check("deepseek".equals(restored.getProvider()) && "deepseek-flash".equals(restored.getModel())
+                            && KEY.equals(restored.getAccessToken()), "DeepSeek provider model and encrypted key survive reload");
+                }
                 AtomicReference<FakeConnection> observed = new AtomicReference<>();
                 AssistantApi client = new AssistantApi(getTargetContext(), url -> {
                     FakeConnection fake = new FakeConnection(url, 200, envelope(provider, description()).toString()); observed.set(fake); return fake;
@@ -118,6 +126,13 @@ public final class DirectApiInstrumentation extends Instrumentation {
                     check(!fake.getURL().toString().contains(KEY) && "https".equals(fake.getURL().getProtocol()), provider + " HTTPS URL without key");
                     check(("gemini".equals(provider) ? KEY : "Bearer " + KEY).equals(fake.getRequestProperty("gemini".equals(provider) ? "x-goog-api-key" : "Authorization")), provider + " correct authentication header");
                     check(!fake.body.toString("UTF-8").contains(KEY), provider + " transport body excludes key");
+                    if ("deepseek".equals(provider)) {
+                        JSONObject sent = new JSONObject(fake.body.toString("UTF-8"));
+                        check("https://api.deepseek.com/chat/completions".equals(fake.getURL().toString())
+                                && "deepseek-flash".equals(sent.getString("model")), "DeepSeek official endpoint and vision model used");
+                        Reply test = new Reply(); client.check(test); test.await();
+                        check(test.error == null && test.success.contains("测试成功"), "DeepSeek generated-image connection test succeeds");
+                    }
                 } finally { client.close(); }
             }
             JSONObject truncated = envelope("gemini", description()); truncated.getJSONArray("candidates").getJSONObject(0).put("finishReason", "MAX_TOKENS");

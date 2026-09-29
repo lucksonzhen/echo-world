@@ -73,7 +73,7 @@ public final class MainActivity extends Activity {
         text(body,"模型接口类型",16);
         provider = new Spinner(this); provider.setContentDescription("模型接口类型");
         ArrayAdapter<String> providers = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-                new String[]{"自定义 OpenAI 兼容接口", "OpenAI 官方 API", "Gemini 官方 API", "原有中转服务（可选）"});
+                new String[]{"自定义 OpenAI 兼容接口", "OpenAI 官方 API", "Gemini 官方 API", "DeepSeek 官方 API", "原有中转服务（可选）"});
         providers.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         provider.setAdapter(providers); body.addView(provider, new LinearLayout.LayoutParams(-1,dp(56)));
         for (int i = 0; i < DirectApiConfig.PROVIDERS.length; i++) if (DirectApiConfig.PROVIDERS[i].equals(selectedProvider)) provider.setSelection(i);
@@ -277,6 +277,7 @@ public final class MainActivity extends Activity {
         connectionHelp.setText(backend ? "兼容旧版部署。此模式需要另行运行描述服务。"
                 : "gemini".equals(selectedProvider) ? "Gemini 官方地址已填好。输入 Google AI Studio 的 API Key，可获取模型列表后选择。列表不保证图片识别可用，仍需测试小图。获取列表不上传图片、不调用生成接口。手机网络需能访问 Gemini API。"
                 : "openai".equals(selectedProvider) ? "OpenAI 官方地址已填好，模型需支持图片输入。"
+                : "deepseek".equals(selectedProvider) ? "DeepSeek 官方地址已填好。请输入 DeepSeek 平台的 API Key，默认视觉模型 deepseek-flash。采用非思考模式描述画面；不要填写仅支持文字的模型。请先保存并测试识图连接。"
                 : "填写服务商的 HTTPS 基础地址（通常以 /v1 结尾），不要加 /chat/completions。接口需支持图片输入及 Chat Completions。密钥只发给这个地址。" );
         setCheckingConnection(checkingConnection);
     }

@@ -4,15 +4,17 @@ import java.net.URI;
 
 /** Validates the destination before any credential or image can leave the device. */
 public final class DirectApiConfig {
-    public static final String[] PROVIDERS = {"compatible", "openai", "gemini", "backend"};
+    public static final String[] PROVIDERS = {"compatible", "openai", "gemini", "deepseek", "backend"};
     public static String defaultUrl(String provider) {
         if ("openai".equals(provider)) return "https://api.openai.com/v1";
         if ("gemini".equals(provider)) return "https://generativelanguage.googleapis.com/v1beta";
+        if ("deepseek".equals(provider)) return "https://api.deepseek.com";
         return "";
     }
     public static String defaultModel(String provider) {
         if ("openai".equals(provider)) return "gpt-4.1-mini";
         if ("gemini".equals(provider)) return "gemini-3.5-flash";
+        if ("deepseek".equals(provider)) return "deepseek-flash";
         return "";
     }
     public static String validateProvider(String provider) {
@@ -28,7 +30,7 @@ public final class DirectApiConfig {
                     || uri.getPort() == 0 || uri.getPort() > 65535 || !uri.normalize().equals(uri)) throw new Exception();
             boolean localBackend = "backend".equals(provider) && debug && "http".equals(uri.getScheme());
             if (!"https".equals(uri.getScheme()) && !localBackend) throw new Exception();
-            if ("openai".equals(provider) || "gemini".equals(provider)) {
+            if ("openai".equals(provider) || "gemini".equals(provider) || "deepseek".equals(provider)) {
                 if (!defaultUrl(provider).equals(clean)) throw new Exception();
             }
             if ("compatible".equals(provider) && (clean.endsWith("/chat/completions") || clean.endsWith("/responses")))

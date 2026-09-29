@@ -11,6 +11,14 @@ public final class DirectApiConfigTest {
         throw new AssertionError("Unsafe configuration accepted");
     }
     public static void main(String[] args) {
+        equal("deepseek", DirectApiConfig.validateProvider("deepseek"));
+        equal("https://api.deepseek.com", DirectApiConfig.validateBaseUrl("deepseek", "https://api.deepseek.com/", false));
+        equal("deepseek-flash", DirectApiConfig.defaultModel("deepseek"));
+        equal("https://api.deepseek.com/chat/completions", DirectApiConfig.requestUrl("deepseek", DirectApiConfig.defaultUrl("deepseek"), "deepseek-flash"));
+        rejects(() -> DirectApiConfig.validateBaseUrl("deepseek", "https://api.deepseek.com.evil.example", false));
+        rejects(() -> DirectApiConfig.validateBaseUrl("deepseek", "http://api.deepseek.com", true));
+        rejects(() -> DirectApiConfig.validateBaseUrl("deepseek", "https://api.deepseek.com/chat/completions", false));
+        rejects(() -> DirectApiConfig.validateKey("deepseek", ""));
         equal("https://api.openai.com/v1", DirectApiConfig.validateBaseUrl("openai", "https://api.openai.com/v1/", false));
         equal("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
                 DirectApiConfig.requestUrl("gemini", DirectApiConfig.defaultUrl("gemini"), "gemini-3.5-flash"));
