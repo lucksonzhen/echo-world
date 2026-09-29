@@ -29,6 +29,15 @@ public final class SetupVoiceCommandTest {
         }
         check("小助手选择深度求索",SetupVoiceCommand.Kind.PROVIDER);
         check("小助手选择第六项",SetupVoiceCommand.Kind.NONE);
+        for (String text:new String[]{"下一步","选择第二项","确认操作","同意上传","小助手下一步"}) {
+            if (SetupVoiceCommand.parseInput(text,true).kind==SetupVoiceCommand.Kind.NONE) throw new AssertionError("explicit window: "+text); count++;
+        }
+        for (String text:new String[]{"下一步","选择第二项","确认操作","同意上传"}) {
+            if (SetupVoiceCommand.parseInput(text,false).kind!=SetupVoiceCommand.Kind.NONE) throw new AssertionError("passive input: "+text); count++;
+        }
+        for (String text:new String[]{"我不同意上传","确认操作然后上传","下一步是什么","帮我朗读密钥","","小助手"}) {
+            if (SetupVoiceCommand.parseInput(text,true).kind!=SetupVoiceCommand.Kind.NONE) throw new AssertionError("unknown input: "+text); count++;
+        }
         System.out.println("Setup voice command: "+count+" checks passed");
     }
 }

@@ -15,7 +15,8 @@ public final class SetupVoiceModelInstrumentation extends Instrumentation {
     private static final String[][] CASES = {
         {"next", "NEXT"}, {"back", "BACK"}, {"provider", "PROVIDER"}, {"help", "HELP"},
         {"paste", "PASTE"}, {"test", "TEST"}, {"consent", "CONSENT"},
-        {"confirm", "CONFIRM"}, {"cancel", "CANCEL"}, {"skip", "SKIP"}
+        {"confirm", "CONFIRM"}, {"cancel", "CANCEL"}, {"skip", "SKIP"},
+        {"bare-next", "NEXT"}, {"bare-provider", "PROVIDER"}, {"bare-confirm", "CONFIRM"}, {"bare-cancel", "CANCEL"}
     };
     @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
     @Override public void onStart() { new Thread(this::runFixtures, "setup-audio-fixtures").start(); }
@@ -33,7 +34,7 @@ public final class SetupVoiceModelInstrumentation extends Instrumentation {
                         if (recognizer.acceptWaveForm(frame,count)) {
                             String text=new JSONObject(recognizer.getResult()).optString("text", "");
                             words.add(text);
-                            SetupVoiceCommand action=SetupVoiceCommand.parse(text);
+                            SetupVoiceCommand action=SetupVoiceCommand.parseInput(text,fixture[0].startsWith("bare-"));
                             if (action.kind!=SetupVoiceCommand.Kind.NONE) events.add(action.kind.name());
                         }
                     }

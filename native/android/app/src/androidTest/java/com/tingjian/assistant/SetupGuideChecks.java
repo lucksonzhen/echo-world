@@ -54,6 +54,27 @@ final class SetupGuideChecks {
             ui(()->activity.handleVoice("小助手选择第一项"));
             ui(()->activity.handleVoice("下一步"));
             ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"unprefixed or unrelated speech cannot advance setup"));
+            ui(()-> {
+                ((Narrator)field("narrator")).stop(); ((android.os.Handler)field("main")).removeCallbacks((Runnable)field("announcement"));
+                set("voiceMuteUntil",0L); set("screenReader",false); set("voiceWindowEnds",0L);
+                SetupGuideActivity.receiveVoice("选择第二项");
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==0,"bare command outside listen window is ignored");
+                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
+                SetupGuideActivity.receiveVoice("选择第二项");
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==1 && (Long)field("voiceWindowEnds")==0,"explicit listening accepts bare command and closes after one action");
+                ((Narrator)field("narrator")).stop(); ((android.os.Handler)field("main")).removeCallbacks((Runnable)field("announcement"));
+                set("voiceMuteUntil",0L); set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
+                SetupGuideActivity.receiveVoice("fixture-secret-not-a-command");
+                String message=((TextView)field("feedback")).getText().toString();
+                check(message.contains("没有听清") && !message.contains("fixture-secret"),"unrecognized speech gives feedback without echoing possible secrets");
+                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
+                ((Runnable)field("voiceTimeout")).run();
+                check(((TextView)field("feedback")).getText().toString().contains("没有收到") && (Long)field("voiceWindowEnds")==0,"silent listen timeout reports a retry instead of doing nothing");
+                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
+                SetupGuideActivity.voiceUnavailable("麦克风被系统暂停");
+                check(((TextView)field("feedback")).getText().toString().contains("麦克风") && (Long)field("voiceWindowEnds")==0,"silenced microphone cancels listening with a visible reason");
+                ((DialPicker)field("choices")).setSelection(0);
+            });
             next();
             ui(()->check(field("step")==SetupFlow.Step.ADDRESS,"provider requires explicit confirmation"));
             next(); next();

@@ -6,6 +6,11 @@ public final class SetupVoiceCommand {
     public final Kind kind;
     public final int providerIndex;
     private SetupVoiceCommand(Kind kind,int index) { this.kind=kind; providerIndex=index; }
+    /** Bare commands are accepted only during an explicitly opened listening window. */
+    public static SetupVoiceCommand parseInput(String raw,boolean explicitListening) {
+        String value=VoiceCommandRouter.normalize(raw);
+        return parse(explicitListening && !value.startsWith("小助手") ? "小助手"+value : value);
+    }
     public static SetupVoiceCommand parse(String raw) {
         String value=VoiceCommandRouter.normalize(raw);
         if (!value.startsWith("小助手")) return new SetupVoiceCommand(Kind.NONE,-1);

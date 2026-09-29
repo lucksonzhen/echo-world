@@ -72,3 +72,7 @@ powershell -ExecutionPolicy Bypass -File native/android/app/src/androidTest/gene
 使用 `-PtestRunner=com.tingjian.assistant.SetupVoiceModelInstrumentation` 构建测试 APK，再运行 `adb shell am instrument -w com.tingjian.assistant.screen.test/com.tingjian.assistant.SetupVoiceModelInstrumentation`。每段只将实际语音终点交给配置命令解析器，部分结果和强制 EOF 不触发操作。本轮使用 APK 内置的 Vosk small 中文模型；“上一步”识别为“上一部”的同音结果只作为返回动作兼容，不放宽同意或确认命令。
 
 配置 Activity、模拟 API、授权和密钥保护另由 `-PtestRunner=com.tingjian.assistant.DirectApiInstrumentation` 检查。音频样本不包含真人录音，不能替代实际麦克风和读屏全流程验收。
+
+## 配置语音短时输入（1.6.3）
+
+增加 4 段不带唤醒词的固定合成语音：下一步、选择第二项、确认操作、取消操作。由相同脚本生成，与此前 10 段合计 14 段、1,719,656 字节。新增样本仅使用主动输入的解析模式；普通待命仍要求唤醒词。测试只在 Vosk 的实际语音终点交付命令，部分结果和 EOF 不执行。

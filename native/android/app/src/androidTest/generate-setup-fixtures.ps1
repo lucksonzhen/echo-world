@@ -15,6 +15,10 @@ $samples = [ordered]@{
  'confirm.wav' = '小助手确认操作'
  'cancel.wav' = '小助手取消操作'
  'skip.wav' = '小助手跳过'
+ 'bare-next.wav' = '下一步'
+ 'bare-provider.wav' = '选择第二项'
+ 'bare-confirm.wav' = '确认操作'
+ 'bare-cancel.wav' = '取消操作'
 }
 $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $synthesizer = New-Object System.Speech.Synthesis.SpeechSynthesizer

@@ -37,7 +37,9 @@ public final class WakeWordService extends Service {
     private static final String CHANNEL = "voice_standby";
     private static final String ACTION_STOP = "com.tingjian.assistant.STOP_LISTENING";
     private static final int NOTIFICATION_ID = 42;
-    private static volatile boolean running;
+    private static volatile boolean running, ready, microphoneSilenced;
+    public static boolean isReady() { return running && ready; }
+    public static boolean isMicrophoneSilenced() { return microphoneSilenced; }
     private static volatile boolean setupMode;
     public static boolean isSetupMode() { return setupMode; }
     public static void startSetup(Context context) {
@@ -87,24 +89,28 @@ public final class WakeWordService extends Service {
         boolean requestedSetup=intent!=null && intent.getBooleanExtra("setup_mode",false) && SetupGuideActivity.isVisible();
         if (live) {
             setupMode=requestedSetup; wake.reset();
-            if (setupMode && recorder!=null) SetupGuideActivity.voiceReady();
+            if (setupMode && ready) {
+                if (silenced) SetupGuideActivity.voiceUnavailable("系统暂停了麦克风输入，请检查麦克风总开关，结束录音或通话后重试。");
+                else SetupGuideActivity.voiceReady();
+            }
             return START_NOT_STICKY;
         }
         setupMode=requestedSetup;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            setStatus("请先允许麦克风权限，再开启语音待命。", true); stopSelf(); return START_NOT_STICKY;
+            setStatus("请先允许麦克风权限，再开启语音待命。", true); if (setupMode) SetupGuideActivity.voiceFailed(); stopSelf(); return START_NOT_STICKY;
         }
         try {
             // Must happen BEFORE model unpacking; this service is started only by a visible Activity.
             startForeground(NOTIFICATION_ID, notification("正在准备本地语音识别…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         } catch (RuntimeException error) {
             setStatus("系统未允许启动麦克风，请回到应用重新开启语音待命。", true);
+            if (setupMode) SetupGuideActivity.voiceFailed();
             stopSelf(); return START_NOT_STICKY;
         }
         if (!setupMode && !ScreenAssistantService.isConnected()) {
             setStatus("请先在系统无障碍设置中开启屏幕读取服务。", true); stopSelf(); return START_NOT_STICKY;
         }
-        live = true; running = true; recognitionSession = wake.start();
+        live = true; running = true; ready=false; microphoneSilenced=false; recognitionSession = wake.start();
         setStatus("正在准备本地语音识别，首次开启需要解压语音模型，可能要等一到几分钟。", true);
         worker.execute(this::listen);
         main.post(tick);
@@ -160,10 +166,14 @@ public final class WakeWordService extends Service {
             if (!live) return;
             audio.startRecording();
             if (audio.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException();
+            ready=true;
             final long session = recognitionSession;
             main.post(() -> { if (live) {
                 setStatus(setupMode ? "配置语音操作已开启，请在提示结束后说指令。" : "语音待命已开启，可以回到正在浏览的应用。", !setupMode);
-                if (setupMode) SetupGuideActivity.voiceReady();
+                if (setupMode) {
+                    if (silenced) SetupGuideActivity.voiceUnavailable("系统暂停了麦克风输入，请检查麦克风总开关，结束录音或通话后重试。");
+                    else SetupGuideActivity.voiceReady();
+                }
             } });
             short[] buffer = new short[1600];
             boolean wasAvailable = true;
@@ -227,6 +237,7 @@ public final class WakeWordService extends Service {
         } catch (Exception | LinkageError error) {
             main.post(() -> {
                 if (!live) return;
+                ready=false;
                 setStatus("本地语音识别未能启动或已中断，请回到应用重新开启，并检查麦克风权限。", true);
                 if (setupMode) SetupGuideActivity.voiceFailed();
                 stopSelf();
@@ -253,7 +264,9 @@ public final class WakeWordService extends Service {
             AudioRecord audio = recorder;
             if (!live || audio == null) return;
             AudioRecordingConfiguration current = audio.getActiveRecordingConfiguration();
-            silenced = current != null && current.isClientSilenced();
+            boolean changed=silenced!=(current != null && current.isClientSilenced());
+            silenced = current != null && current.isClientSilenced(); microphoneSilenced=silenced;
+            if (changed && silenced && setupMode) SetupGuideActivity.voiceUnavailable("系统暂停了麦克风输入。请检查麦克风总开关，结束占用麦克风的录音或通话后重试。");
         }
     };
 
@@ -279,7 +292,7 @@ public final class WakeWordService extends Service {
     }
 
     @Override public void onDestroy() {
-        live = false; running = false; setupMode=false;
+        live = false; running = false; ready=false; microphoneSilenced=false; setupMode=false;
         wake.stop(); main.removeCallbacksAndMessages(null);
         AudioRecord audio = recorder;
         if (audio != null) try { audio.stop(); } catch (RuntimeException ignored) {}

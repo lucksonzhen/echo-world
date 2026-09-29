@@ -14,7 +14,7 @@ An AI screen companion that turns visual content into spoken understanding.
 
 ### Android 手机直连版（无需电脑）
 
-1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.6.2 手机直连试用包，可覆盖此前试用包。要求 Android 11+。设置未完成时自动进入逐项语音引导。
+1. 安装 [Releases](https://github.com/lucksonzhen/echo-world/releases) 中的 Android 1.6.3 手机直连试用包，可覆盖此前试用包。要求 Android 11+。设置未完成时自动进入逐项语音引导。
 2. 默认选择 **Gemini 官方 API**，官方地址已填好；在手机输入自己的 Gemini API Key，可在底部拨轮找到“获取 Gemini 模型列表”，双击后选择候选模型。手机网络必须能访问 Gemini API。
 3. 在底部拨轮选择“保存并测试识图连接”并双击：仅发送应用生成的几何图形，不截图，会产生一次 API 调用。测试成功后听取屏幕识别说明，再明确确认是否允许上传屏幕。
 4. 开启“听见世界助手”无障碍服务；按需允许麦克风并开启语音待命。返回图片或视频 App，说“小助手，描述屏幕”。
@@ -28,6 +28,12 @@ API Key 用 Android Keystore 加密保存在手机；不会内置公共密钥，
 按 [服务端说明](server/README.md) 在电脑或服务器配置 `.env`，运行 `npm install` 和 `npm run server:local`。Android 可选“原有中转服务”，但手机直连试用构建只接受 HTTPS；仅 debug 构建允许开发用 HTTP。
 
 常用命令：**描述屏幕、读文字、再说一遍、看看视频、开启／关闭暂停讲解、开启／关闭图片自动描述、停止监控屏幕、快一点／慢一点、停止**，前面加“小助手”。
+
+### Android 1.6.3 配置语音反馈
+
+- “开启配置语音操作”用于口述配置指令，不是 AI 聊天。准备完成后入口变为“语音说一项”。
+- 双击后听到提示音，可在 15 秒内直接说“下一步”“上一步”“选择第二项”；也兼容“小助手，下一步”。没听清、超时或系统暂停麦克风会提示重试。
+- 只有主动开启的短时输入接受不带唤醒词的指令；输入密钥仍需粘贴，测试连接和上传授权仍需要单独确认。
 
 ### Android 1.6.2 入口命名
 
