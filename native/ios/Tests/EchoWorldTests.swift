@@ -3,9 +3,9 @@ import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
-@testable import TingjianScreen
+@testable import EchoWorld
 
-final class TingjianScreenTests: XCTestCase {
+final class EchoWorldTests: XCTestCase {
     func testPrivateHostValidationDoesNotDropInvalidLabels() {
         for host in ["127.0.0.1", "10.0.0.1", "192.168.0.20", "172.16.0.1", "172.31.255.1", "localhost", "[::1]", "mac.local"] {
             XCTAssertTrue(ConnectionConfiguration.isPrivateHost(host), host)

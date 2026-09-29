@@ -11,7 +11,7 @@ enum ScreenImageEncoder {
         guard !input.isEmpty, input.count <= 25 * 1024 * 1024,
               let source = CGImageSourceCreateWithData(input as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               CGImageSourceGetCount(source) > 0 else {
-            throw ScreenDescriptionError.message("没有收到有效截图。请把系统“截取屏幕截图”的结果连接到“听见画面描述”。")
+            throw ScreenDescriptionError.message("没有收到有效截图。请把系统“截取屏幕截图”的结果连接到“听见世界描述”。")
         }
         for dimension in [1600, 1200, 960] {
             let options: [CFString: Any] = [

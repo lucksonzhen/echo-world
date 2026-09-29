@@ -18,6 +18,14 @@ public final class ScreenCommandTest {
         check("描述视频！", ScreenCommand.Kind.VIDEO);
         check("停止", ScreenCommand.Kind.STOP);
         check("取消", ScreenCommand.Kind.STOP);
+        check("再说一遍", ScreenCommand.Kind.REPEAT);
+        check("请再读一遍。", ScreenCommand.Kind.REPEAT);
+        check("请帮我重读一遍", ScreenCommand.Kind.REPEAT);
+        check("帮我重复朗读", ScreenCommand.Kind.REPEAT);
+        check("重复描述", ScreenCommand.Kind.REPEAT);
+        check("重播描述", ScreenCommand.Kind.REPEAT);
+        check("再说一遍的按钮在哪里？", ScreenCommand.Kind.QUESTION);
+        check("不要再说一遍", ScreenCommand.Kind.QUESTION);
         check("停止按钮在哪里？", ScreenCommand.Kind.QUESTION);
         check("停止监控屏幕", ScreenCommand.Kind.MONITOR_STOP);
         check("请停止监控。", ScreenCommand.Kind.MONITOR_STOP);

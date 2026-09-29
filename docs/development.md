@@ -2,6 +2,8 @@
 
 ## 代码结构
 
+仓库名称为 `echo-world`，应用显示名为“听见世界”，构建项目名为 `EchoWorld`。Android 的 `com.tingjian.*` 包名、iOS bundle ID、钥匙串及配置存储键继续沿用，避免把品牌更新变成全新安装或丢失连接配置。iOS 的 Xcode 工程、target 和 scheme 已更名，需重新运行 `xcodegen generate`。
+
 | 位置 | 职责 |
 | --- | --- |
 | `native/android/` | 手机本地语音、截图、暂停检测、图片自动描述和朗读 |

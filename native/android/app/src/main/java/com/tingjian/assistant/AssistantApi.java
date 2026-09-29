@@ -37,8 +37,8 @@ public final class AssistantApi {
             try {
                 if (id != generation.get()) return;
                 SettingsStore.ConnectionSnapshot snapshot = settings.snapshot();
-                if (!snapshot.consentGranted) throw new IllegalStateException("请先在听见屏幕中确认屏幕识别说明。");
-                if (snapshot.serverUrl.isEmpty()) throw new IllegalStateException("请先打开听见屏幕，设置描述服务地址。");
+                if (!snapshot.consentGranted) throw new IllegalStateException("请先在听见世界中确认屏幕识别说明。");
+                if (snapshot.serverUrl.isEmpty()) throw new IllegalStateException("请先打开听见世界，设置描述服务地址。");
                 JSONObject body = new JSONObject().put("mediaType", video ? "video" : "image").put("mode", mode);
                 JSONArray images = new JSONArray();
                 for (ScreenFrame frame : frames) images.put(new JSONObject().put("dataUrl", frame.dataUrl).put("timestampMs", frame.timestampMs));
@@ -79,7 +79,7 @@ public final class AssistantApi {
                 if (id != generation.get()) return;
                 int status = connection.getResponseCode(); JSONObject response = read(connection, status);
                 if (status != 200) throw new IllegalStateException(response.optString("error", "无法连接服务。"));
-                if (!"ok".equals(response.optString("status"))) throw new IllegalStateException("此地址不是听见屏幕的描述服务。");
+                if (!"ok".equals(response.optString("status"))) throw new IllegalStateException("此地址不是听见世界的描述服务。");
                 String message = response.optBoolean("configured") ? "连接成功，描述服务已配置。" : "服务已连接，识别功能尚未开通，请联系服务提供方完成配置。";
                 main.post(() -> { if (id == generation.get()) callback.onSuccess(message); });
             } catch (Exception error) {

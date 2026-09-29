@@ -16,7 +16,7 @@ final class SettingsModel: ObservableObject {
         do {
             _ = try configuration.validatedURL()
             try ConfigurationStore.save(configuration)
-            status = "已保存。现在可以在快捷指令中添加听见画面描述。"
+            status = "已保存。现在可以在快捷指令中添加听见世界描述。"
         } catch { status = error.localizedDescription }
     }
 
@@ -110,8 +110,8 @@ struct SettingsView: View {
                 Section("只需设置一次") {
                     instruction(1, "打开系统“快捷指令”，新建快捷指令，命名为“听见当前屏幕”。")
                     instruction(2, "首先添加系统“截取屏幕截图”（Take Screenshot）动作。不要在它之前添加“打开 App”。")
-                    instruction(3, "添加本 App 的“听见画面描述”动作，把“截图”参数设为上一步的截图结果。选择简要描述、详细描述或读出文字。")
-                    instruction(4, "添加系统“朗读文本”（Speak Text）动作，输入选择“听见画面描述”的结果。保存即可。")
+                    instruction(3, "添加本 App 的“听见世界描述”动作，把“截图”参数设为上一步的截图结果。选择简要描述、详细描述或读出文字。")
+                    instruction(4, "添加系统“朗读文本”（Speak Text）动作，输入选择“听见世界描述”的结果。保存即可。")
                     Button("打开快捷指令") {
                         if let url = URL(string: "shortcuts://") { openURL(url) }
                     }
@@ -130,7 +130,7 @@ struct SettingsView: View {
                         .disabled(model.isChecking)
                 }
             }
-            .navigationTitle("听见屏幕")
+            .navigationTitle("听见世界")
             .onChange(of: model.status) { _, newValue in
                 if !newValue.isEmpty { AccessibilityNotification.Announcement(newValue).post() }
             }

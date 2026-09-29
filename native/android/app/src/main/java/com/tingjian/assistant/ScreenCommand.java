@@ -3,7 +3,7 @@ package com.tingjian.assistant;
 /** Maps speech to a bounded action; unrecognized speech is a question about one screen. */
 public final class ScreenCommand {
     public enum Kind {
-        DESCRIBE, READ_TEXT, VIDEO, STOP, PAUSE_START, PAUSE_STOP, FASTER, SLOWER, NORMAL_RATE, QUESTION,
+        DESCRIBE, READ_TEXT, VIDEO, REPEAT, STOP, PAUSE_START, PAUSE_STOP, FASTER, SLOWER, NORMAL_RATE, QUESTION,
         /** Turns on unattended description of prominent images while browsing. */
         AUTO_IMAGE_START,
         /** Turns off only the automatic image description. */
@@ -17,6 +17,7 @@ public final class ScreenCommand {
     public static ScreenCommand parse(String raw) {
         String text = raw == null ? "" : raw.trim();
         String normalized = text.replaceAll("[\\s，。！？,.!?]", "");
+        if (normalized.matches("(请帮我|请|帮我)?(再说一遍|再读一遍|重读一遍|重复朗读|重复描述|重播描述)")) return new ScreenCommand(Kind.REPEAT, text);
         if (normalized.matches("(请)?(开启|开始)?(暂停讲解|暂停后讲解)")) return new ScreenCommand(Kind.PAUSE_START, text);
         if (normalized.matches("(请)?(关闭|停止|结束)(暂停讲解|暂停后讲解)")) return new ScreenCommand(Kind.PAUSE_STOP, text);
         // "监听" is deliberately absent: closing the microphone belongs to VoiceCommandRouter.

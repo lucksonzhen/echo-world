@@ -234,7 +234,7 @@ public final class WakeWordService extends Service {
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, WakeWordService.class).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_assistant)
-                .setContentTitle("听见屏幕 · 语音待命").setContentText(text)
+                .setContentTitle("听见世界 · 语音待命").setContentText(text)
                 .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .addAction(new Notification.Action.Builder(null, "关闭语音待命", stop).build()).build();
     }

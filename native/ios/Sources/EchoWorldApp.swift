@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct TingjianScreenApp: App {
+struct EchoWorldApp: App {
     var body: some Scene {
         WindowGroup {
             SettingsView()

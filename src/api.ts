@@ -51,6 +51,6 @@ export async function describeMedia(baseUrl: string, token: string, body: Analys
 export async function checkConnection(baseUrl: string, token: string): Promise<boolean> {
   const value = await request(baseUrl, '/api/health', token);
   const parsed = z.object({ status: z.literal('ok'), configured: z.boolean() }).safeParse(value);
-  if (!parsed.success) throw new Error('服务地址不正确，请连接听见画面的后端服务。');
+  if (!parsed.success) throw new Error('服务地址不正确，请连接听见世界的后端服务。');
   return parsed.data.configured;
 }

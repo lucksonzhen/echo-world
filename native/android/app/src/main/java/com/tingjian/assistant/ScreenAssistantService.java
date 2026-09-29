@@ -182,7 +182,7 @@ public final class ScreenAssistantService extends AccessibilityService {
 
     private void updatePanel() {
         if (connected && overlay != null) {
-            overlay.render(active != null, pauseEnabled, imageWatchEnabled, statusMessage, latestDescription);
+            overlay.render(active != null || (narrator != null && narrator.isSpeaking()), pauseEnabled, imageWatchEnabled, statusMessage, latestDescription);
         }
     }
 
@@ -206,15 +206,17 @@ public final class ScreenAssistantService extends AccessibilityService {
             startActivity(new Intent(this, MainActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
         } catch (RuntimeException error) {
-            report("无法打开语音待命设置，请从桌面打开听见屏幕应用。", true);
+            report("无法打开语音待命设置，请从桌面打开听见世界应用。", true);
         }
     }
 
     private void handleCommand(String text) {
         if (!connected) return;
         ScreenCommand command = ScreenCommand.parse(text == null ? "" : text);
+        if (!settings.isConsentGranted()) latestDescription = "";
         if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser("已停止。"); return; }
         if (command.kind == ScreenCommand.Kind.MONITOR_STOP) { stopFromUser(MONITOR_STOPPED); return; }
+        if (command.kind == ScreenCommand.Kind.REPEAT) { repeatDescription(); return; }
         if (command.kind == ScreenCommand.Kind.PAUSE_STOP) {
             cancelCurrent();
             setPauseMode(false);
@@ -235,11 +237,11 @@ public final class ScreenAssistantService extends AccessibilityService {
         if (command.kind == ScreenCommand.Kind.AUTO_IMAGE_START && imageWatchEnabled) { report("图片自动描述已经开启。", true); return; }
         cancelCurrent();
         if (!settings.isConsentGranted()) {
-            report("请先打开听见屏幕应用，阅读并同意按指令采集画面及上传识别的说明。", true);
+            report("请先打开听见世界应用，阅读并同意按指令采集画面及上传识别的说明。", true);
             return;
         }
         if (settings.getServerUrl() == null || settings.getServerUrl().trim().isEmpty()) {
-            report("请先在听见屏幕应用中配置描述服务地址。", true);
+            report("请先在听见世界应用中配置描述服务地址。", true);
             return;
         }
         if (screenUnavailable()) { report("屏幕已锁定或关闭，请解锁后再描述。", true); return; }
@@ -248,12 +250,31 @@ public final class ScreenAssistantService extends AccessibilityService {
         boolean video = command.kind == ScreenCommand.Kind.VIDEO;
         String mode = command.kind == ScreenCommand.Kind.READ_TEXT ? "text" : "detailed";
         String question = command.kind == ScreenCommand.Kind.QUESTION ? command.text : null;
-        latestDescription = "";
         Session session = new Session(generation, video, mode, question, foregroundPackage, false);
         active = session;
         updatePanel();
         report(video ? "开始观察。请让视频继续播放，将采集约八秒内的六个画面，不录制声音。" : "正在读取当前屏幕。", true);
         capture(session);
+    }
+
+    /** Replays only the last successful result, without a screenshot or a network request. */
+    private void repeatDescription() {
+        cancelCurrent();
+        if (screenUnavailable()) { report("屏幕已锁定或关闭，请解锁后再重听。", true); return; }
+        if (latestDescription.isEmpty()) {
+            report("还没有可重听的描述，请先描述一次屏幕。", true);
+            return;
+        }
+        long replayGeneration = generation;
+        setStatus("正在重听最近一次描述，不会重新识别当前画面。");
+        ignorePauseUntil = SystemClock.uptimeMillis() + 2000L;
+        narrator.speak("重播最近一次描述。" + latestDescription, completed -> {
+            if (!connected || generation != replayGeneration) return;
+            ignorePauseUntil = SystemClock.uptimeMillis() + 1000L;
+            if (completed) setStatus("重听已完成。");
+            updatePanel();
+        });
+        updatePanel();
     }
 
     private void changeSpeechRate(ScreenCommand.Kind command) {
@@ -269,7 +290,7 @@ public final class ScreenAssistantService extends AccessibilityService {
             report("暂停讲解需要允许访问播放状态。系统把它放在通知使用权设置中；授权后，请再说开启暂停讲解。", true);
             try {
                 startActivity(MediaPauseMonitor.permissionIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (RuntimeException error) { report("请打开听见屏幕设置，允许读取播放状态。", true); }
+            } catch (RuntimeException error) { report("请打开听见世界设置，允许读取播放状态。", true); }
             return;
         }
         setPauseMode(true);
@@ -306,7 +327,6 @@ public final class ScreenAssistantService extends AccessibilityService {
                 || !pauseMonitor.isStillPaused(packageName)) return;
         if (settings.getServerUrl().trim().isEmpty()) return;
         cancelCurrent();
-        latestDescription = "";
         Session session = new Session(generation, false, "brief", null, packageName, true);
         active = session;
         setStatus("视频已暂停，正在理解停住的画面。");
@@ -324,7 +344,6 @@ public final class ScreenAssistantService extends AccessibilityService {
             return;
         }
         cancelCurrent();
-        latestDescription = "";
         Session session = new Session(generation, false, "brief", null, packageName, false, new Rect(bounds));
         active = session;
         setStatus("发现图片，正在自动描述。");
@@ -438,12 +457,15 @@ public final class ScreenAssistantService extends AccessibilityService {
                         automaticNarration = session.automatic;
                         automaticImageNarration = session.autoImage;
                         if (session.autoImage) imageWatch.onDescribed(session.imageHash);
-                        setStatus("描述已完成。可展开控制，在按钮下方查看完整文字。");
-                        updatePanel();
+                        setStatus("描述已完成。可说小助手再说一遍，或展开控制查看完整文字。");
                         narrator.speak(speech, completed -> {
-                            if (generation == session.id) { automaticNarration = false; automaticImageNarration = false; }
-                            ignorePauseUntil = SystemClock.uptimeMillis() + 1000L;
+                            if (connected && generation == session.id) {
+                                automaticNarration = false; automaticImageNarration = false;
+                                ignorePauseUntil = SystemClock.uptimeMillis() + 1000L;
+                                updatePanel();
+                            }
                         });
+                        updatePanel();
                     }
                     @Override public void onFailure(String message) {
                         // Unattended image lookups fail quietly so a flaky network does not talk over the user.
@@ -461,7 +483,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         // Secure-window has value 6 from API 34. Older Android versions may return internal-error instead.
         if (errorCode == 6) return "当前页面受应用保护，系统不允许截图，无法描述这个页面。";
         if (errorCode == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) return "操作太快，系统暂时限制截图。请稍等片刻后再试。";
-        if (errorCode == ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS) return "无障碍截图权限已关闭，请重新启用听见屏幕服务。";
+        if (errorCode == ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS) return "无障碍截图权限已关闭，请重新启用听见世界服务。";
         if (errorCode == ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY) return "无法读取当前显示屏，请回到手机主屏幕后重试。";
         return "系统无法读取当前画面。页面可能受截图保护，请切换到允许截图的页面后重试。";
     }
@@ -553,6 +575,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         @Override public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
                 boolean wasActive = active != null;
+                latestDescription = "";
                 cancelCurrent();
                 foregroundPackage = "";
                 pauseMonitor.setTargetPackage("");
@@ -573,6 +596,7 @@ public final class ScreenAssistantService extends AccessibilityService {
     private void tearDown() {
         if (destroyed) return;
         destroyed = true;
+        latestDescription = "";
         cancelCurrent();
         connected = false;
         if (instance.get() == this) instance.clear();

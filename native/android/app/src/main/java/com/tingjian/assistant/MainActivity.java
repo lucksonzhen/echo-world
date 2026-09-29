@@ -2,6 +2,7 @@ package com.tingjian.assistant;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -10,6 +11,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
+import android.os.PowerManager;
+import android.net.Uri;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
@@ -37,6 +40,7 @@ public final class MainActivity extends Activity {
     private TextView voiceStatus;
     private TextView playbackStatus;
     private TextView imageWatchStatus;
+    private TextView accessibilityPermission, microphonePermission, playbackPermission, notificationPermission, batteryPermission;
     private static final int VOICE_PERMISSIONS = 32;
 
     @Override public void onCreate(Bundle state) {
@@ -50,10 +54,24 @@ public final class MainActivity extends Activity {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom); return insets;
         });
-        heading(body,"听见屏幕",30);
+        heading(body,"听见世界",30);
         text(body,"留在正在浏览的应用里，\n一句话，听懂眼前的画面。",20);
         text(body,"完成一次设置后，直接说“小助手，描述屏幕”。日常浏览无需找按钮，也不用下载图片或视频。",16);
         status = text(body,"",16); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        heading(body,"权限与后台运行",20);
+        text(body,"这里集中显示系统状态。从设置返回后会自动更新。通知使用权只用于可选的暂停讲解，电池设置也可稍后调整。",14);
+        accessibilityPermission = text(body,"",16);
+        button(body,"检查无障碍服务设置",this::openAccessibility);
+        microphonePermission = text(body,"",16);
+        button(body,"打开麦克风权限设置",this::openApplicationSettings);
+        playbackPermission = text(body,"",16);
+        button(body,"检查通知使用权",() -> openSystemSettings(MediaPauseMonitor.permissionIntent(this)));
+        notificationPermission = text(body,"",16);
+        button(body,"打开待命通知设置",() -> openSystemSettings(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())));
+        batteryPermission = text(body,"",16);
+        text(body,"若语音待命经常被系统关闭，可在电池优化列表中找到听见世界，选择不优化；部分手机还需在应用电池设置中允许后台运行。这可能增加耗电，不保证系统始终保留进程。",14);
+        button(body,"打开电池优化设置",() -> openSystemSettings(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
         heading(body,"1. 连接描述服务",20);
         text(body,"服务地址",16); url = input(body,"例如 https://your-server.example.com",false);
         url.setContentDescription("描述服务地址"); url.setText(store.getServerUrl());
@@ -61,7 +79,7 @@ public final class MainActivity extends Activity {
         try { token.setText(store.getAccessToken()); } catch (Exception error) { report(error.getMessage()); }
         text(body,"正式使用请连接 HTTPS 服务。API 密钥只配置在服务器，手机无需填写。",14);
         heading(body,"2. 允许按命令识别屏幕",20);
-        text(body,"开启后会出现悬浮按钮。发出描述命令时，会将当前压缩画面发送到上述服务及 AI 提供方。若另外开启暂停讲解，支持的播放器暂停后也会发送一张当前画面。若开启图片自动描述，会在本机读取前台应用的控件类型、标签和位置以发现大图，并只上传该图片区域。视频观察命令约 8 秒取 6 帧，不包含声音。截图和控件信息只在内存中处理，不保存到相册。",16);
+        text(body,"开启后会出现悬浮按钮。发出描述命令时，会将当前压缩画面发送到上述服务及 AI 提供方。若另外开启暂停讲解，支持的播放器暂停后也会发送一张当前画面。若开启图片自动描述，会在本机读取前台应用的控件类型、标签和位置以发现大图，并只上传该图片区域。视频观察命令约 8 秒取 6 帧，不包含声音。截图和控件信息只在内存中处理，不保存到相册。最近一次成功的描述文字暂存在内存，供重听；锁屏、撤销同意或关闭服务后清除。",16);
         consent = new CheckBox(this); consent.setText("我了解并允许按上述方式发送当前屏幕进行描述"); consent.setTextSize(16); consent.setMinHeight(dp(56)); consent.setTextColor(INK);
         consent.setChecked(store.isConsentGranted()); body.addView(consent);
         consent.setOnCheckedChangeListener((button, checked) -> { if (!checked) { store.revokeConsent(); WakeWordService.stopListening(this); ScreenAssistantService.dispatchCommand("停止"); report("已关闭语音待命并暂停屏幕识别。"); } });
@@ -91,7 +109,7 @@ public final class MainActivity extends Activity {
         button(body,"允许读取播放状态",() -> {
             if (checkingConnection || !save() || !consent.isChecked()) return;
             try { startActivity(MediaPauseMonitor.permissionIntent(this)); }
-            catch (RuntimeException error) { report("请到系统设置的通知使用权中开启听见屏幕播放状态。"); }
+            catch (RuntimeException error) { report("请到系统设置的通知使用权中开启听见世界播放状态。"); }
         });
         button(body,"开启暂停讲解",() -> {
             if (checkingConnection || !save() || !consent.isChecked()) return;
@@ -114,8 +132,8 @@ public final class MainActivity extends Activity {
             ScreenAssistantService.dispatchCommand("关闭图片自动描述");
         });
         heading(body,"6. 回到正在浏览的应用，直接说",20);
-        text(body,"“小助手，描述屏幕”\n“小助手，读文字”\n“小助手，看看视频”\n“小助手，开启暂停讲解”\n“小助手，关闭暂停讲解”\n“小助手，开启图片自动描述”\n“小助手，关闭图片自动描述”\n“小助手，停止监控屏幕”——关闭图片自动描述和暂停讲解，保留语音待命\n“小助手，快一点”或“慢一点”\n“小助手，正常语速”\n“小助手，左边那张图片有什么？”\n“小助手，停止”——取消任务、朗读及所有自动描述\n“小助手，关闭语音监听”——关闭麦克风",16);
-        text(body,"也可先说“小助手”，听到提示音后在八秒内说要求。默认语速为 1.35 倍，可用语音调节。朗读过程中先说“小助手，停止”，再提出新的描述要求；语速、关闭暂停讲解、关闭图片自动描述和停止监控屏幕指令可直接说。悬浮按钮仅作备用入口。",16);
+        text(body,"“小助手，描述屏幕”\n“小助手，读文字”\n“小助手，再说一遍”——重听最近一次描述，不重新上传\n“小助手，看看视频”\n“小助手，开启暂停讲解”\n“小助手，关闭暂停讲解”\n“小助手，开启图片自动描述”\n“小助手，关闭图片自动描述”\n“小助手，停止监控屏幕”——关闭图片自动描述和暂停讲解，保留语音待命\n“小助手，快一点”或“慢一点”\n“小助手，正常语速”\n“小助手，左边那张图片有什么？”\n“小助手，停止”——取消任务、朗读及所有自动描述\n“小助手，关闭语音监听”——关闭麦克风",16);
+        text(body,"也可先说“小助手”，听到提示音后在八秒内说要求。默认语速为 1.35 倍，可用语音调节。朗读过程中先说“小助手，停止”，再提出新的描述要求；再说一遍、语速、关闭暂停讲解、关闭图片自动描述和停止监控屏幕指令可直接说。悬浮按钮仅作备用入口。",16);
         text(body,"首次授权可通过 TalkBack 的读屏导航完成。若系统关闭服务或手机重启，需要重新打开本应用开启语音待命。外放视频中出现相同唤醒口令可能误触发，耳机通常能减少干扰，仍需在实际设备验证。",14);
         text(body,"仅能理解当前可见内容，不会自动滚动；受保护页面或锁屏无法截图。视频需要在观察期间继续播放。",14);
         button(body,"打开系统无障碍设置",this::openAccessibility);
@@ -125,7 +143,7 @@ public final class MainActivity extends Activity {
         super.onResume();
         resumed = true;
         if (pendingVoiceStart) { pendingVoiceStart = false; startVoice(); }
-        if (status != null && !checkingConnection) report(ScreenAssistantService.isConnected() ? "屏幕读取已开启。开启下方语音待命后，回到其他应用直接说指令。" : "请先在系统无障碍设置中启用听见屏幕助手。");
+        if (status != null && !checkingConnection) report(ScreenAssistantService.isConnected() ? "屏幕读取已开启。开启下方语音待命后，回到其他应用直接说指令。" : "请先在系统无障碍设置中启用听见世界助手。");
         main.post(refreshVoiceStatus);
     }
     @Override protected void onPause() { resumed = false; main.removeCallbacks(refreshVoiceStatus); super.onPause(); }
@@ -133,6 +151,7 @@ public final class MainActivity extends Activity {
     private final Runnable refreshVoiceStatus = new Runnable() {
         @Override public void run() {
             if (!resumed) return;
+            refreshPermissionStatus();
             String value = WakeWordService.getStatus();
             if (voiceStatus != null && !value.contentEquals(voiceStatus.getText())) voiceStatus.setText(value);
             String playback = MediaPauseMonitor.hasAccess(MainActivity.this)
@@ -182,7 +201,33 @@ public final class MainActivity extends Activity {
         if (enableVoiceButton != null) enableVoiceButton.setEnabled(!checking);
         // Consent remains editable so revocation can immediately stop collection.
     }
-    private void openAccessibility() { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+    private void refreshPermissionStatus() {
+        setPermissionText(accessibilityPermission, "无障碍服务：" + (ScreenAssistantService.isConnected() ? "已连接，可以读取屏幕。" : "未连接，请在系统设置中检查。"));
+        setPermissionText(microphonePermission, "麦克风权限：" + (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                ? "已允许；语音待命需单独开启，系统麦克风总开关也需打开。" : "未允许，语音待命不可用；悬浮按钮仍可使用。"));
+        setPermissionText(playbackPermission, "通知使用权：" + (MediaPauseMonitor.hasAccess(this)
+                ? "已允许读取播放状态。" : "未允许；仅暂停讲解需要。"));
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        setPermissionText(notificationPermission, "待命通知：" + (notifications != null && notifications.areNotificationsEnabled()
+                ? "应用通知已允许；若看不到待命通知，请检查通知类别设置。" : "应用通知已关闭，可在系统通知设置中开启。"));
+        PowerManager power = getSystemService(PowerManager.class);
+        setPermissionText(batteryPermission, "电池优化：" + (power == null ? "无法读取，请检查系统设置。"
+                : power.isIgnoringBatteryOptimizations(getPackageName()) ? "已设为不优化。" : "正在优化，后台待命可能被系统暂停。"));
+    }
+    private void setPermissionText(TextView view, String value) {
+        if (view != null && !value.contentEquals(view.getText())) view.setText(value);
+    }
+    private void openAccessibility() { openSystemSettings(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+    private void openApplicationSettings() {
+        openSystemSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+    }
+    private void openSystemSettings(Intent intent) {
+        try { startActivity(intent); }
+        catch (RuntimeException unavailable) {
+            try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+            catch (RuntimeException fallbackUnavailable) { report("无法打开系统设置，请从手机设置中找到听见世界，检查对应权限或电池设置。"); }
+        }
+    }
     private void report(String message) { if (status != null) status.setText(message); }
     private TextView text(LinearLayout parent,String value,int sp) {
         TextView view = new TextView(this); view.setText(value); view.setTextSize(sp); view.setTextColor(INK); view.setLineSpacing(dp(5),1); view.setPadding(0,dp(8),0,dp(8)); parent.addView(view); return view;

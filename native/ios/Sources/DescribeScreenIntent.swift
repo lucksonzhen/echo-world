@@ -14,7 +14,7 @@ enum ScreenDescriptionMode: String, AppEnum {
 /// Receives the SYSTEM screenshot action's output. This intent cannot capture
 /// other apps by itself, and must not open our UI before the screenshot action.
 struct DescribeScreenIntent: AppIntent {
-    static var title: LocalizedStringResource = "听见画面描述"
+    static var title: LocalizedStringResource = "听见世界描述"
     static var description = IntentDescription("描述系统“截取屏幕截图”动作传入的图片，并返回可朗读文字。请先添加系统截屏动作，再添加本动作。不会自行读取其他 App 的屏幕。")
     static var openAppWhenRun: Bool = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
@@ -41,7 +41,7 @@ struct DescribeScreenIntent: AppIntent {
         try Task.checkCancellation()
         let configuration = try ConfigurationStore.read()
         guard configuration.allowsScreenshotUpload else {
-            throw ScreenDescriptionError.message("请先打开听见屏幕，保存服务设置并允许发送截图进行描述。")
+            throw ScreenDescriptionError.message("请先打开听见世界，保存服务设置并允许发送截图进行描述。")
         }
         _ = try configuration.validatedURL()
         let image = try ScreenImageEncoder.jpeg(from: screenshot.data)

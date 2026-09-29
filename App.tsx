@@ -191,7 +191,7 @@ function AppContent() {
   return <SafeAreaView style={s.safe} edges={['top', 'left', 'right', 'bottom']}>
     <StatusBar style="dark" />
     <View style={s.header}><View style={s.headerInner}>
-      <View style={s.brand}><View style={s.logo}><Icon name="headphones" color="#FFFFFF" size={25} /></View><View><Text style={s.brandName}>听见画面</Text><Text style={s.brandSub}>让每一幅画面，都有声音</Text></View></View>
+      <View style={s.brand}><View style={s.logo}><Icon name="headphones" color="#FFFFFF" size={25} /></View><View><Text style={s.brandName}>听见世界</Text><Text style={s.brandSub}>让每一幅画面，都有声音</Text></View></View>
       <Pressable accessibilityRole="button" accessibilityLabel="打开连接设置" onPress={() => { void speech.stop(); setPage('settings'); }} style={s.connectionChip}>
         <View style={[s.dot, { backgroundColor: connection === 'ready' ? '#2C7652' : '#8D633C' }]} />
         <Text style={s.small}>{connection === 'ready' ? '服务已连接' : '连接设置'}</Text><Icon name="chevron-right" size={15} />
@@ -209,7 +209,7 @@ function AppContent() {
               <Text style={s.label}>朗读速度</Text>
               <View style={s.segment}>{[0.8, 1, 1.2, 1.5].map(value => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: value === rate }} aria-checked={value === rate} accessibilityLabel={`${value}倍速`} onPress={() => { setRate(value); void speech.stop(); }} style={[s.rateButton, rate === value && s.segmentSelected]}><Text style={[s.segmentText, rate === value && s.segmentTextSelected]}>{value}×</Text></Pressable>)}</View>
               <View style={s.switchRow}><View style={s.flex}><Text style={s.label}>描述完成后自动朗读</Text><Text style={s.small}>使用 VoiceOver 或 TalkBack 时自动暂停此功能，避免重叠播报。</Text></View><Switch accessibilityLabel="描述完成后自动朗读" value={autoRead} onValueChange={setAutoRead} trackColor={{ false: '#B3BFB7', true: C.green }} /></View>
-              <Action label={speech.speaking ? '停止试听' : '试听朗读声音'} icon={speech.speaking ? 'square' : 'volume-2'} secondary onPress={() => { if (speech.speaking) void speech.stop(); else void speech.speak('你好，我是听见画面。选一张照片，让我把画面讲给你听。', rate); }} />
+              <Action label={speech.speaking ? '停止试听' : '试听朗读声音'} icon={speech.speaking ? 'square' : 'volume-2'} secondary onPress={() => { if (speech.speaking) void speech.stop(); else void speech.speak('你好，我是听见世界。选一张照片，让我把画面讲给你听。', rate); }} />
               <Text style={s.small}>使用设备上的中文语音。iPhone 若没有声音，请关闭静音模式并调高媒体音量。</Text>
             </View>
             <View style={s.card}>
@@ -283,7 +283,7 @@ function AppContent() {
             </View>
           </>}
           {page === 'settings' && !!speech.error && <Text accessibilityLiveRegion="polite" style={s.explanation}>{speech.error}</Text>}
-          <Text style={s.footer}>听见画面 · 多一点理解，多一点自由</Text>
+          <Text style={s.footer}>听见世界 · 多一点理解，多一点自由</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

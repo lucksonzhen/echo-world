@@ -36,6 +36,7 @@ public final class VoiceWakeControllerTest {
         partialStopRemainderCannotLaunchCapture();
         narrationAllowsExplicitRateAndPauseStop();
         finalStartsPauseNarration();
+        repeatRequiresFinalAndWake();
         System.out.println("Voice wake controller: " + assertions + " assertions passed.");
     }
 
@@ -308,6 +309,33 @@ public final class VoiceWakeControllerTest {
                 "voice router recognizes pause narration shutdown");
         f.controller.onFinal("小助手开启暂停讲解");
         check(f.commands.size() == 1, "duplicate pause mode activation is suppressed");
+    }
+
+    private static void repeatRequiresFinalAndWake() {
+        Fixture f = new Fixture();
+        long id = f.controller.start();
+        f.controller.onFinal("再说一遍");
+        check(f.commands.isEmpty(), "bare repeat ignored");
+        for (f.now = 0; f.now <= 1000; f.now += 100) f.controller.onPartial("小助手再说一遍");
+        check(f.commands.isEmpty(), "partial repeat must not restart narration");
+        f.controller.onFinal("小助手，再说一遍。");
+        check(f.commands.size() == 1 && f.commands.get(0).kind == ScreenCommand.Kind.REPEAT, "final repeat is a local replay command");
+        f.controller.onFinal("小助手再说一遍");
+        check(f.commands.size() == 1, "duplicate final cannot restart replay");
+        f.controller.setNarrating(true);
+        f.now += 2000;
+        f.controller.onFinal("再读一遍");
+        check(f.commands.size() == 1, "narration requires explicit wake prefix for repeat");
+        f.controller.onFinal("小助手请再读一遍");
+        check(f.commands.size() == 2 && f.commands.get(1).kind == ScreenCommand.Kind.REPEAT, "explicit repeat works during narration");
+        f.controller.setNarrating(false);
+        f.controller.onFinal("小助手");
+        f.controller.onFinal("重复朗读");
+        check(f.commands.size() == 3 && f.commands.get(2).kind == ScreenCommand.Kind.REPEAT, "wake window accepts replay");
+        f.controller.stop();
+        f.controller.start();
+        f.controller.onFinal(id, "小助手再说一遍");
+        check(f.commands.size() == 3, "old recognition session cannot replay");
     }
 
     private static void check(boolean condition, String message) {

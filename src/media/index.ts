@@ -41,7 +41,7 @@ export async function pickMedia(kind: 'image' | 'video' | 'camera'): Promise<Sel
   try {
     if (kind === 'camera' && Platform.OS !== 'web') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) throw new MediaError('相机权限未开启。请在系统设置中允许“听见画面”使用相机，或改为从相册选择图片。');
+      if (!permission.granted) throw new MediaError('相机权限未开启。请在系统设置中允许“听见世界”使用相机，或改为从相册选择图片。');
     }
     if (kind === 'video' && Platform.OS === 'ios') {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();

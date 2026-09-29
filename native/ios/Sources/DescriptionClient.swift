@@ -72,7 +72,7 @@ struct DescriptionClient {
 
     func describe(jpeg: Data, style: DescriptionStyle, question: String?) async throws -> AnalysisResponse {
         guard configuration.allowsScreenshotUpload else {
-            throw ScreenDescriptionError.message("请先打开听见屏幕，允许在运行快捷指令时发送当前截图进行描述。")
+            throw ScreenDescriptionError.message("请先打开听见世界，允许在运行快捷指令时发送当前截图进行描述。")
         }
         guard !jpeg.isEmpty, jpeg.count <= ScreenImageEncoder.maxUploadBytes else {
             throw ScreenDescriptionError.message("截图大小不正确，请重新运行快捷指令。")
@@ -123,7 +123,7 @@ struct DescriptionClient {
                 throw ScreenDescriptionError.message("描述服务未返回有效回应，请检查连接。")
             }
             guard (200...299).contains(response.statusCode) else {
-                if response.statusCode == 401 { throw ScreenDescriptionError.message("连接口令不正确，请打开听见屏幕检查设置。") }
+                if response.statusCode == 401 { throw ScreenDescriptionError.message("连接口令不正确，请打开听见世界检查设置。") }
                 if response.statusCode == 429 { throw ScreenDescriptionError.message("请求较频繁，请稍等一分钟再试。") }
                 if (300...399).contains(response.statusCode) { throw ScreenDescriptionError.message("服务地址发生跳转，请在设置中填写最终服务地址。") }
                 if let failure = try? JSONDecoder().decode(ServiceFailure.self, from: data) {
@@ -136,7 +136,7 @@ struct DescriptionClient {
         } catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             if error.code == .timedOut { throw ScreenDescriptionError.message("描述超时，请稍后重新运行快捷指令。") }
-            throw ScreenDescriptionError.message("无法连接描述服务，请检查网络和听见屏幕中的服务地址。")
+            throw ScreenDescriptionError.message("无法连接描述服务，请检查网络和听见世界中的服务地址。")
         }
     }
 }

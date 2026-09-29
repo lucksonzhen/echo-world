@@ -55,7 +55,7 @@ public final class SettingsStore {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(pieces[0], Base64.NO_WRAP)));
             return new String(cipher.doFinal(Base64.decode(pieces[1], Base64.NO_WRAP)), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Exception error) { throw new IllegalStateException("无法读取访问口令，请打开听见屏幕重新保存连接设置。"); }
+        } catch (Exception error) { throw new IllegalStateException("无法读取访问口令，请打开听见世界重新保存连接设置。"); }
     }
     public void save(String serverUrl, String token, boolean consent) throws Exception {
         synchronized (SETTINGS_LOCK) {

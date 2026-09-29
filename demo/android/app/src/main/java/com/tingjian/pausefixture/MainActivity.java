@@ -142,7 +142,7 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(22), dp(22), dp(22));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
-        TextView brand = text("听见屏幕  /  视频体验", 13, ACCENT);
+        TextView brand = text("听见世界  /  视频体验", 13, ACCENT);
         brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(brand);
         TextView heading = text("暂停，听见这一刻", 27, INK);

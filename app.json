@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "听见画面",
-    "slug": "tingjian-blind-assistant",
-    "version": "1.0.0",
+    "name": "听见世界",
+    "slug": "echo-world",
+    "version": "1.1.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
     "ios": {
@@ -14,7 +14,7 @@
       "package": "com.tingjian.assistant",
       "blockedPermissions": ["android.permission.RECORD_AUDIO"]
     },
-    "web": { "name": "听见画面", "bundler": "metro" },
+    "web": { "name": "听见世界", "bundler": "metro" },
     "plugins": [["expo-image-picker", {
       "photosPermission": "选择你希望听取描述的照片或视频。",
       "cameraPermission": "拍摄一张照片，听取画面描述。",

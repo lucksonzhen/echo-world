@@ -62,10 +62,10 @@ enum ConfigurationStore {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return ConnectionConfiguration() }
         guard status == errSecSuccess, let data = item as? Data else {
-            throw ScreenDescriptionError.message("无法读取连接设置，请先解锁 iPhone 并打开听见屏幕。")
+            throw ScreenDescriptionError.message("无法读取连接设置，请先解锁 iPhone 并打开听见世界。")
         }
         guard let configuration = try? JSONDecoder().decode(ConnectionConfiguration.self, from: data) else {
-            throw ScreenDescriptionError.message("连接设置无法读取，请在听见屏幕中重新保存设置。")
+            throw ScreenDescriptionError.message("连接设置无法读取，请在听见世界中重新保存设置。")
         }
         return configuration
     }

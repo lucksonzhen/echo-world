@@ -88,8 +88,8 @@ final class AssistantOverlay {
     }
 
     void announceClosed() {
-        if (panel != null) panel.announceForAccessibility("听见屏幕服务已关闭。");
-        Toast.makeText(context, "听见屏幕服务已关闭", Toast.LENGTH_SHORT).show();
+        if (panel != null) panel.announceForAccessibility("听见世界服务已关闭。");
+        Toast.makeText(context, "听见世界服务已关闭", Toast.LENGTH_SHORT).show();
     }
 
     void setHidden(boolean hidden) {
@@ -118,8 +118,8 @@ final class AssistantOverlay {
         panel.removeAllViews();
         statusView = null;
         if (!expanded) {
-            Button expand = button("听见屏幕", () -> { expanded = true; updatePanel(); });
-            expand.setContentDescription("听见屏幕，展开控制");
+            Button expand = button("听见世界", () -> { expanded = true; updatePanel(); });
+            expand.setContentDescription("听见世界，展开控制");
             panel.addView(expand);
             if (active || pauseEnabled || imageWatchEnabled) {
                 Button stop = button("停止", () -> listener.onCommand("停止"));
@@ -131,7 +131,7 @@ final class AssistantOverlay {
         LinearLayout header = new LinearLayout(context);
         header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(context);
-        title.setText("听见屏幕"); title.setTextColor(INK); title.setTextSize(18);
+        title.setText("听见世界"); title.setTextColor(INK); title.setTextSize(18);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setAccessibilityHeading(true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1f));
@@ -154,6 +154,10 @@ final class AssistantOverlay {
         controls.addView(statusView);
         controls.addView(button("描述屏幕", () -> listener.onCommand("描述屏幕")));
         controls.addView(button("读文字", () -> listener.onCommand("读文字")));
+        Button repeat = button("再说一遍", () -> listener.onCommand("再说一遍"));
+        repeat.setContentDescription("再说一遍，重听最近一次成功的描述，不重新截图或上传");
+        repeat.setEnabled(!latestDescription.isEmpty());
+        controls.addView(repeat);
         Button video = button("观察视频", () -> listener.onCommand("观察视频"));
         video.setContentDescription("观察视频，采集接下来约八秒的六个画面，不录制声音");
         controls.addView(video);
