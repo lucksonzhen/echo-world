@@ -9,6 +9,7 @@
     </queries>
     <application android:label="听见世界" android:theme="@style/AppTheme" android:icon="@drawable/ic_assistant"
         android:allowBackup="false" android:usesCleartextTraffic="${allowCleartext}" android:supportsRtl="true">
+        <activity android:name=".SetupGuideActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>

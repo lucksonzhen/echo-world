@@ -193,7 +193,7 @@ public final class ScreenAssistantService extends AccessibilityService {
 
     private void report(String message, boolean speak) {
         setStatus(message);
-        if (speak && narrator != null) {
+        if (speak && narrator != null && !SetupGuideActivity.isVisible()) {
             ignorePauseUntil = SystemClock.uptimeMillis() + 2000L;
             narrator.speak(message, completed -> ignorePauseUntil = SystemClock.uptimeMillis() + 1000L);
         }
@@ -541,7 +541,8 @@ public final class ScreenAssistantService extends AccessibilityService {
         }
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         if (getPackageName().equals(packageName)) {
-            if (MainActivity.class.getName().contentEquals(event.getClassName() == null ? "" : event.getClassName())) {
+            if (MainActivity.class.getName().contentEquals(event.getClassName() == null ? "" : event.getClassName())
+                    || SetupGuideActivity.class.getName().contentEquals(event.getClassName() == null ? "" : event.getClassName())) {
                 foregroundPackage = "";
                 cancelCurrent();
                 pauseMonitor.setTargetPackage("");

@@ -44,6 +44,7 @@ public final class MainActivity extends Activity {
     private TextView status;
     private Button checkConnectionButton, enableAssistantButton, enableVoiceButton, modelsButton;
     private boolean checkingConnection;
+    private boolean guideOffered;
     private boolean resumed, pendingVoiceStart;
     private final Handler main = new Handler();
     private TextView voiceStatus;
@@ -54,6 +55,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        guideOffered = state != null && state.getBoolean("guide_offered");
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         store = new SettingsStore(this); api = new AssistantApi(this);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
@@ -67,6 +69,7 @@ public final class MainActivity extends Activity {
         text(body,"留在正在浏览的应用里，\n一句话，听懂眼前的画面。",20);
         text(body,"完成一次设置后，直接说“小助手，描述屏幕”。日常浏览无需找按钮，也不用下载图片或视频。",16);
         status = text(body,"",16); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        button(body,"逐项语音配置引导",this::openSetupGuide);
         heading(body,"1. 手机直连模型 API",20);
         text(body,"手机自行截图、请求模型并朗读，无需电脑或同一 Wi-Fi。仍需联网，图片会发送到你选择的 API 服务商。",16);
         selectedProvider = store.getProvider();
@@ -103,7 +106,7 @@ public final class MainActivity extends Activity {
             if (checkingConnection || !save()) return;
             setCheckingConnection(true); report("正在测试连接，直连模式将发送生成的小图…");
             api.check(new AssistantApi.Callback() {
-                public void onSuccess(String message) { setCheckingConnection(false); report(message); }
+                public void onSuccess(String message) { if (!message.contains("未配置")) store.markConnectionVerified(); setCheckingConnection(false); report(message); }
                 public void onFailure(String message) { setCheckingConnection(false); report(message); }
             });
         });
@@ -190,12 +193,26 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        if (!guideOffered && SetupFlow.needsGuide(store.isConfigured(),store.isConsentGranted(),ScreenAssistantService.isConnected(),
+                getSharedPreferences("setup_guide",MODE_PRIVATE).getBoolean("unfinished",false))) {
+            openSetupGuide();
+        }
         if (pendingVoiceStart) { pendingVoiceStart = false; startVoice(); }
         if (status != null && !checkingConnection) report(ScreenAssistantService.isConnected() ? "屏幕读取已开启。开启下方语音待命后，回到其他应用直接说指令。" : "请先在系统无障碍设置中启用听见世界助手。");
         main.post(refreshVoiceStatus);
     }
     @Override protected void onPause() { resumed = false; main.removeCallbacks(refreshVoiceStatus); super.onPause(); }
     @Override protected void onDestroy() { main.removeCallbacksAndMessages(null); if (api != null) api.close(); super.onDestroy(); }
+    private void openSetupGuide() {
+        guideOffered = true;
+        api.cancel(); setCheckingConnection(false);
+        startActivityForResult(new Intent(this,SetupGuideActivity.class),83);
+    }
+    @Override protected void onSaveInstanceState(Bundle state) { state.putBoolean("guide_offered",guideOffered); super.onSaveInstanceState(state); }
+    @Override protected void onActivityResult(int request,int result,Intent data) {
+        super.onActivityResult(request,result,data);
+        if (request==83) { guideOffered=true; recreate(); }
+    }
     private final Runnable refreshVoiceStatus = new Runnable() {
         @Override public void run() {
             if (!resumed) return;

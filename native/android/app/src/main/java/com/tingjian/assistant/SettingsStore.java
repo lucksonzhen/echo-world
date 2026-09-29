@@ -55,6 +55,8 @@ public final class SettingsStore {
         return !getServerUrl().isEmpty() && ("backend".equals(getProvider())
                 || (!getModel().isEmpty() && !prefs.getString("api_key_encrypted", "").isEmpty()));
     } }
+    public boolean isConnectionVerified() { synchronized (SETTINGS_LOCK) { return prefs.getBoolean("connection_verified", false); } }
+    public void markConnectionVerified() { synchronized (SETTINGS_LOCK) { prefs.edit().putBoolean("connection_verified",true).apply(); } }
     public String getAccessToken() {
         synchronized (SETTINGS_LOCK) { return readAccessToken(); }
     }
@@ -77,6 +79,9 @@ public final class SettingsStore {
             String url = DirectApiConfig.validateBaseUrl(provider, serverUrl, (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
             String cleanModel = DirectApiConfig.validateModel(provider, model);
             token = DirectApiConfig.validateKey(provider, token);
+            boolean changed = !provider.equals(getProvider()) || !url.equals(getServerUrl())
+                    || (!"backend".equals(provider) && !cleanModel.equals(getModel()));
+            try { changed = changed || !token.equals(readAccessToken()); } catch (IllegalStateException unreadable) { changed = true; }
             String encrypted = "";
             if (!token.trim().isEmpty()) {
                 Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -89,11 +94,12 @@ public final class SettingsStore {
                     .putString(backend ? "token_encrypted" : "api_key_encrypted", encrypted)
                     .putBoolean("screen_consent", consent);
             if (!backend) editor.putString("direct_model", cleanModel);
+            if (changed) editor.putBoolean("connection_verified",false);
             if (!editor.commit()) throw new IllegalStateException("无法保存连接设置，请重试。");
         }
     }
     public void clearCredential() { synchronized (SETTINGS_LOCK) {
-        prefs.edit().remove("api_key_encrypted").remove("token_encrypted").apply();
+        prefs.edit().remove("api_key_encrypted").remove("token_encrypted").putBoolean("connection_verified",false).apply();
         revokeConsent();
     } }
     public void revokeConsent() { synchronized (SETTINGS_LOCK) { prefs.edit().putBoolean("screen_consent", false).putBoolean("pause_description", false).putBoolean("image_watch", false).apply(); } }
