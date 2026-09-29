@@ -39,13 +39,7 @@ final class DialChecks {
                 check(page.getChildAt(page.getChildCount()-1)==dial && page.getChildAt(0) instanceof android.widget.ScrollView,"wheel is a fixed sibling below scrollable content");
                 BottomDial.Item provider=dial.current();
                 check(provider.getText().contains("Gemini"),"wheel announces the current provider without reading a key");
-                try {
-                    android.view.View decor=activity.getWindow().getDecorView();
-                    android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(decor.getWidth(),decor.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
-                    decor.draw(new android.graphics.Canvas(image));
-                    try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(activity.getCacheDir(),"dial-guide.png"))) { image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out); }
-                    image.recycle();
-                } catch(Exception failure) { throw new AssertionError(failure); }
+                snapshot(activity,"dial-guide.png");
                 dial.performClick(); dial.move(1);
                 check(dial.current().getText().contains("DeepSeek"),"provider submenu scrolls to DeepSeek");
                 check(provider.getText().contains("Gemini"),"scrolling provider choices does not commit selection");
@@ -54,6 +48,13 @@ final class DialChecks {
                 dial.performClick(); dial.move(-1); dial.closeMenu(false);
                 check(provider.getText().contains("DeepSeek"),"cancelling a menu preserves the confirmed provider");
             });
+            for(SetupFlow.Step preview:new SetupFlow.Step[]{SetupFlow.Step.KEY,SetupFlow.Step.CONSENT}) {
+                ui(()-> {
+                    try { java.lang.reflect.Method go=SetupGuideActivity.class.getDeclaredMethod("go",SetupFlow.Step.class); go.setAccessible(true); go.invoke(activity,preview); }
+                    catch(Exception error) { throw new AssertionError(error); }
+                });
+                ui(()->snapshot(activity,"dial-"+preview.name().toLowerCase(java.util.Locale.ROOT)+".png"));
+            }
             List<String> speech=new ArrayList<>(); AtomicInteger actions=new AtomicInteger(); BottomDial[] control={null};
             ui(()-> {
                 BottomDial dial=new BottomDial(activity,new BottomDial.Feedback() { public void stop(){} public void speak(String text){speech.add(text);} }); control[0]=dial;
@@ -85,6 +86,15 @@ final class DialChecks {
             ui(()->check(speech.isEmpty(),"leaving the wheel cancels delayed announcements"));
         } finally { ui(activity::finish); runner.getTargetContext().getSharedPreferences("setup_guide",0).edit().clear().commit(); }
         return passed;
+    }
+    private static void snapshot(SetupGuideActivity activity,String name) {
+        try {
+            View decor=activity.getWindow().getDecorView();
+            android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(decor.getWidth(),decor.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
+            decor.draw(new android.graphics.Canvas(image));
+            try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(activity.getCacheDir(),name))) { image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out); }
+            image.recycle();
+        } catch(Exception failure) { throw new AssertionError(failure); }
     }
     private static void event(BottomDial dial,long time,int type,float x) {
         MotionEvent event=MotionEvent.obtain(time,time,type,x,60,0); try { dial.onTouchEvent(event); } finally { event.recycle(); }

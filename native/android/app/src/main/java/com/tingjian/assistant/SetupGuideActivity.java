@@ -100,20 +100,27 @@ public final class SetupGuideActivity extends Activity {
             public void speak(String text) { SetupGuideActivity.this.speak(text,true); }
         });
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
-        body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL); body.setPadding(32,24,32,32);
-        body.setBackgroundColor(Color.rgb(246,247,242)); scroll.addView(body);
+        body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL); body.setPadding(dp(28),dp(24),dp(28),dp(24));
+        body.setBackgroundColor(Color.rgb(248,249,246)); scroll.addView(body);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom); return insets;
         });
-        label("语音配置引导", 26).setAccessibilityHeading(true);
-        label("底部拨轮：左右滑动，停稳听选项，双击执行。读屏模式可用双指横滑或上一项、下一项操作。",16);
-        instructions = label("",20);
+        LinearLayout masthead=new LinearLayout(this); masthead.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView brand=new TextView(this); brand.setText("听见世界  /  设置"); brand.setTextSize(13); brand.setTextColor(Color.rgb(87,106,98)); brand.setLetterSpacing(.05f);
+        masthead.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        TextView count=new TextView(this); count.setText(String.format(java.util.Locale.ROOT,"%02d / 12",step.ordinal()+1)); count.setTextSize(13); count.setTextColor(Color.rgb(87,106,98)); masthead.addView(count); body.addView(masthead);
+        LinearLayout progressLine=new LinearLayout(this); LinearLayout.LayoutParams progressParams=new LinearLayout.LayoutParams(-1,dp(3)); progressParams.topMargin=dp(20); progressParams.bottomMargin=dp(44); body.addView(progressLine,progressParams);
+        View filled=new View(this); filled.setBackgroundColor(Color.rgb(48,89,73)); progressLine.addView(filled,new LinearLayout.LayoutParams(0,-1,step.ordinal()+1));
+        View remaining=new View(this); remaining.setBackgroundColor(Color.rgb(226,232,225)); progressLine.addView(remaining,new LinearLayout.LayoutParams(0,-1,12-step.ordinal()-1));
+        TextView heading=label("",30); heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0)); heading.setAccessibilityHeading(true);
+        instructions=label("",16); instructions.setTextColor(Color.rgb(85,105,95)); instructions.setLineSpacing(dp(5),1f);
+        LinearLayout.LayoutParams noteParams=(LinearLayout.LayoutParams)instructions.getLayoutParams(); noteParams.bottomMargin=dp(28); instructions.setLayoutParams(noteParams);
         String title, detail, action = "完成本项，继续";
         switch (step) {
             case PROVIDER:
                 title = "模型接口类型"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。可说小助手，选择第二项，选择 DeepSeek；选好后说小助手，下一步。默认选择 Gemini。";
-                choices = new DialPicker(dial,label("",18),title,
+                choices = new DialPicker(dial,selectionCard(),title,
                         new String[]{"Gemini 官方 API", "DeepSeek 官方 API", "OpenAI 官方 API", "自定义 OpenAI 兼容接口", "原有中转服务"});
                 for (int i=0;i<GUIDE_PROVIDERS.length;i++) if (provider.equals(GUIDE_PROVIDERS[i])) choices.setSelection(i);
                 break;
@@ -164,8 +171,10 @@ public final class SetupGuideActivity extends Activity {
         spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。" + voiceHelp();
         if (!setupVoiceEnabled) spoken = "首次使用语音操作，需要授权麦克风。在底部拨轮找到开启配置语音操作并双击；未开启读屏时，本页面也可按音量加键请求权限。系统授权弹窗仍需用读屏完成。" + spoken;
         if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。首次麦克风授权和系统开关仍需这样操作。未开启读屏时可按本页的音量加键请求语音权限。开启读屏的快捷方式因手机设置而异。";
-        instructions.setText(spoken);
-        feedback = label("",16);
+        heading.setText(displayTitle());
+        instructions.setText(displaySummary());
+        feedback=label("",14); feedback.setTextColor(Color.rgb(100,114,105)); feedback.setMaxLines(4); feedback.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams feedbackParams=(LinearLayout.LayoutParams)feedback.getLayoutParams(); feedbackParams.topMargin=dp(20); feedback.setLayoutParams(feedbackParams);
         button(screenReader ? "语音说一项，双击后听提示音再说" : "开启配置语音操作",this::enableSetupVoice);
         if (field!=null && field.isEnabled()) button(step==SetupFlow.Step.KEY ? "粘贴密钥，不朗读内容" : "从剪贴板粘贴本项",this::pasteField);
         next = button(action,this::completeCurrent); next.setEnabled(!busy);
@@ -327,12 +336,14 @@ public final class SetupGuideActivity extends Activity {
         }
     };
     private TextView label(String text,int size) {
-        TextView view=new TextView(this); view.setText(text); view.setTextSize(size); view.setTextColor(Color.rgb(27,53,45)); view.setPadding(8,16,8,16); body.addView(view); return view;
+        TextView view=new TextView(this); view.setText(text); view.setTextSize(size); view.setTextColor(Color.rgb(27,53,45)); view.setPadding(0,dp(8),0,dp(8)); body.addView(view); return view;
     }
     private BottomDial.Item button(String text,Runnable action) { return dial.add(text,action); }
     @Override public void onBackPressed() { if(!dial.closeMenu(true)) super.onBackPressed(); }
     private void input(String title,String value,boolean secret) {
-        field=new EditText(this); field.setContentDescription(title); field.setHint(title); field.setTextSize(20); field.setSingleLine(true);
+        field=new EditText(this); field.setContentDescription(title); field.setHint(title); field.setTextSize(18); field.setSingleLine(true);
+        field.setPadding(dp(20),dp(18),dp(20),dp(18)); field.setMinHeight(dp(76));
+        android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(); surface.setColor(Color.WHITE); surface.setCornerRadius(dp(18)); surface.setStroke(dp(1),Color.rgb(220,227,219)); field.setBackground(surface);
         field.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_URI));
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO); field.setSaveEnabled(false); field.setText(value);
         field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); voiceVersion.incrementAndGet(); voiceMuteUntil=0; } });
@@ -340,6 +351,36 @@ public final class SetupGuideActivity extends Activity {
         EditText input=field;
         dial.add("编辑"+title,()->{ if(!input.isEnabled()) { sayResult("本项已预填，无需编辑。"); return; } input.requestFocus(); getSystemService(android.view.inputmethod.InputMethodManager.class).showSoftInput(input,0); });
         body.setFocusableInTouchMode(true); body.requestFocus();
+    }
+
+    private int dp(int value) { return Math.round(value*getResources().getDisplayMetrics().density); }
+    private TextView selectionCard() {
+        LinearLayout card=new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setPadding(dp(22),dp(22),dp(22),dp(22));
+        android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(); surface.setColor(Color.WHITE); surface.setCornerRadius(dp(20)); surface.setStroke(dp(1),Color.rgb(226,232,225)); card.setBackground(surface);
+        TextView caption=new TextView(this); caption.setText("当前选择"); caption.setTextSize(12); caption.setTextColor(Color.rgb(100,117,106)); card.addView(caption);
+        TextView value=new TextView(this); value.setTextSize(23); value.setTextColor(Color.rgb(30,62,47)); value.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0)); value.setPadding(0,dp(14),0,dp(6)); card.addView(value);
+        TextView hint=new TextView(this); hint.setText("在底部拨轮中选择与确认"); hint.setTextSize(13); hint.setTextColor(Color.rgb(105,119,110)); card.addView(hint);
+        body.addView(card,new LinearLayout.LayoutParams(-1,-2)); return value;
+    }
+    private String displayTitle() {
+        String[] titles={"选择模型服务","确认连接地址","选择视觉模型","添加你的密钥","测试连接","允许屏幕描述","连接屏幕服务","开启语音待命","暂停时讲解","自动描述图片","允许后台运行","准备好了"};
+        return titles[step.ordinal()];
+    }
+    private String displaySummary() {
+        switch(step) {
+            case PROVIDER: return "选择你使用的 AI 服务。\n选好后，继续下一步。";
+            case ADDRESS: return "compatible".equals(provider)||"backend".equals(provider)?"填写服务商提供的 HTTPS 地址。":"官方地址已为你填好，确认即可。";
+            case MODEL: return "backend".equals(provider)?"模型由中转服务选择，无需填写。":"使用支持图片输入的模型。可以保留预填名称。";
+            case KEY: return "从服务商复制密钥，再选择粘贴。\n密钥仅加密保存在本机，不会读出。";
+            case TEST: return "发送一张生成的小图验证连接，不读取屏幕。可能产生一次 API 费用。";
+            case CONSENT: return "描述时，屏幕画面会上传到你选择的模型服务商。视频取样不包含声音。只有同意后才启用；自动描述默认关闭。";
+            case ACCESSIBILITY: return "在系统无障碍设置中开启“听见世界助手”，完成后返回。手机原有读屏可以保留。";
+            case VOICE: return "说“小助手”，即可描述屏幕。\n语音只在本机识别，也可以稍后开启。";
+            case PAUSE: return "视频暂停时，自动上传当前画面并讲解。\n这是可选功能，可以跳过。";
+            case IMAGES: return "浏览时自动上传并描述较大的图片，可能增加 API 用量。也可以跳过。";
+            case BATTERY: return "允许后台运行，让语音待命更稳定。\n这是可选设置，可能增加耗电。";
+            default: return "回到正在浏览的应用，\n说“小助手，描述屏幕”。";
+        }
     }
 
     private String voiceHelp() {

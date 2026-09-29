@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
         });
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(24),dp(24),dp(24),dp(32)); body.setBackgroundColor(Color.rgb(246,247,242)); scroll.addView(body);
+        body.setPadding(dp(28),dp(24),dp(28),dp(32)); body.setBackgroundColor(Color.rgb(248,249,246)); scroll.addView(body);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom); return insets;
@@ -351,16 +351,16 @@ public final class MainActivity extends Activity {
         if(resumed && dialNarrator!=null && !AccessibilitySupport.hasScreenReader(this)) dialNarrator.speak(message);
     }
     private TextView text(LinearLayout parent,String value,int sp) {
-        TextView view = new TextView(this); view.setText(value); view.setTextSize(sp); view.setTextColor(INK); view.setLineSpacing(dp(5),1); view.setPadding(0,dp(8),0,dp(8)); parent.addView(view); return view;
+        TextView view = new TextView(this); view.setText(value); view.setTextSize(sp); view.setTextColor(INK); view.setLineSpacing(dp(3),1); view.setPadding(0,dp(8),0,dp(8)); parent.addView(view); return view;
     }
     private void heading(LinearLayout parent,String value,int size) {
-        TextView view = text(parent,value,size); view.setTypeface(null,Typeface.BOLD); view.setAccessibilityHeading(true); view.setPadding(0,dp(22),0,dp(8));
+        TextView view = text(parent,value,size); view.setTypeface(Typeface.create("sans-serif-medium",0)); view.setAccessibilityHeading(true); view.setPadding(0,dp(30),0,dp(10));
     }
     private EditText input(LinearLayout parent,String hint,boolean secret) {
         EditText field = new EditText(this); field.setTextSize(16); field.setSingleLine(true); field.setHint(hint); field.setMinHeight(dp(56)); field.setPadding(dp(12),dp(12),dp(12),dp(12));
         field.setInputType(secret ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        GradientDrawable background = new GradientDrawable(); background.setColor(Color.WHITE); background.setCornerRadius(dp(10)); background.setStroke(dp(1),GREEN); field.setBackground(background);
+        GradientDrawable background = new GradientDrawable(); background.setColor(Color.WHITE); background.setCornerRadius(dp(16)); background.setStroke(dp(1),Color.rgb(220,227,219)); field.setBackground(background);
         parent.addView(field,new LinearLayout.LayoutParams(-1,-2));
         dial.add("编辑："+hint,()->{ if(!field.isEnabled()) { report("本项无需编辑。"); return; } field.requestFocus(); field.requestRectangleOnScreen(new android.graphics.Rect(0,0,field.getWidth(),field.getHeight())); getSystemService(android.view.inputmethod.InputMethodManager.class).showSoftInput(field,0); });
         dial.add("粘贴："+hint,()->{

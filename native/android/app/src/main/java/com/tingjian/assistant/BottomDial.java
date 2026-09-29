@@ -59,7 +59,7 @@ public final class BottomDial extends View {
     public BottomDial(Context context,Feedback feedback) {
         super(context); this.feedback=feedback;
         setFocusable(true); setClickable(true); setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
-        setMinimumHeight(dp(184)); setBackgroundColor(Color.rgb(17,43,36));
+        setMinimumHeight(dp(184)); setBackgroundColor(Color.rgb(248,249,246));
     }
     public Item add(String label,Runnable action) { Item item=new Item(label,action); root.add(item); refresh(); return item; }
     public List<Item> items() { return new ArrayList<>(root); }
@@ -170,26 +170,26 @@ public final class BottomDial extends View {
     }
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas); float w=getWidth(),cx=w/2f;
-        paint.setShader(new android.graphics.LinearGradient(0,0,0,dp(120),new int[]{Color.rgb(42,79,62),Color.rgb(21,52,43),Color.rgb(12,33,29)},null,android.graphics.Shader.TileMode.CLAMP));
-        canvas.drawRoundRect(dp(10),dp(6),w-dp(10),dp(118),dp(28),dp(28),paint); paint.setShader(null);
-        paint.setColor(Color.rgb(104,150,130)); paint.setStrokeWidth(dp(2));
-        for(int i=-10;i<=10;i++) { float x=cx+i*dp(22); canvas.drawLine(x,dp(18),x,dp(i%5==0?43:32),paint); }
-        paint.setColor(Color.rgb(241,207,131)); canvas.drawRoundRect(cx-dp(3),dp(10),cx+dp(3),dp(49),dp(3),dp(3),paint);
+        paint.setTypeface(android.graphics.Typeface.create("sans-serif",0)); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(dp(1)); paint.setColor(Color.rgb(217,226,216));
+        canvas.drawArc(-w*.18f,dp(20),w*1.18f,dp(180),198,144,false,paint); paint.setStyle(Paint.Style.FILL);
+        // A quiet central marker and two fading detents suggest a rotary surface.
+        paint.setColor(Color.rgb(201,215,202)); canvas.drawCircle(cx-dp(54),dp(24),dp(2),paint); canvas.drawCircle(cx+dp(54),dp(24),dp(2),paint);
+        paint.setColor(Color.rgb(43,89,66)); canvas.drawCircle(cx,dp(20),dp(3),paint);
         Item item=current(); String label=item==null?"暂无选项":item.label;
-        paint.setTextAlign(Paint.Align.CENTER); paint.setColor(item!=null&&!item.enabled?Color.LTGRAY:Color.WHITE);
-        float size=22*getResources().getDisplayMetrics().scaledDensity; paint.setTextSize(size);
-        while(paint.measureText(label)>w-dp(32) && size>14*getResources().getDisplayMetrics().scaledDensity) paint.setTextSize(--size);
-        // Wrap at code points, rather than truncating option names at large font sizes.
+        paint.setTextAlign(Paint.Align.CENTER); paint.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0)); paint.setColor(item!=null&&!item.enabled?Color.rgb(113,123,115):Color.rgb(29,62,45));
+        float size=20*getResources().getDisplayMetrics().scaledDensity; paint.setTextSize(size);
+        while(paint.measureText(label)>w-dp(80) && size>16*getResources().getDisplayMetrics().scaledDensity) paint.setTextSize(--size);
         List<String> lines=new ArrayList<>(); StringBuilder line=new StringBuilder();
         for(int offset=0;offset<label.length();) { int cp=label.codePointAt(offset); String c=new String(Character.toChars(cp));
-            if(paint.measureText(line.toString()+c)>w-dp(32) && line.length()>0) { lines.add(line.toString()); line.setLength(0); }
+            if(paint.measureText(line.toString()+c)>w-dp(80) && line.length()>0) { lines.add(line.toString()); line.setLength(0); }
             line.append(c); offset+=Character.charCount(cp);
         }
         if(line.length()>0) lines.add(line.toString());
-        for(int i=0;i<Math.min(2,lines.size());i++) canvas.drawText(lines.get(i),cx,dp(80)+i*dp(27),paint);
-        paint.setTextSize(14*getResources().getDisplayMetrics().scaledDensity); paint.setColor(Color.rgb(199,216,203));
-        canvas.drawText((selected+1)+" / "+visibleItems().size()+"    左右滑动 · 停稳听取",cx,dp(143),paint);
-        canvas.drawText("双击执行 · 单击重听",cx,dp(168),paint);
+        for(int i=0;i<Math.min(2,lines.size());i++) canvas.drawText(lines.get(i),cx,dp(lines.size()>1?68:82)+i*dp(26),paint);
+        paint.setTypeface(android.graphics.Typeface.create("sans-serif",0)); paint.setTextSize(12*getResources().getDisplayMetrics().scaledDensity); paint.setColor(Color.rgb(94,113,99));
+        canvas.drawText((selected+1)+"  /  "+visibleItems().size(),cx,dp(122),paint);
+        paint.setColor(Color.rgb(76,99,83)); paint.setTextSize(13*getResources().getDisplayMetrics().scaledDensity);
+        canvas.drawText("左右滑动选择   ·   双击确认",cx,dp(160),paint);
     }
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -204,7 +204,7 @@ public final class BottomDial extends View {
     }
     public static LinearLayout page(Context context,ScrollView content,BottomDial dial) {
         content.setOnApplyWindowInsetsListener(null); content.setPadding(0,0,0,0);
-        LinearLayout page=new LinearLayout(context); page.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout page=new LinearLayout(context); page.setOrientation(LinearLayout.VERTICAL); page.setBackgroundColor(Color.rgb(248,249,246));
         page.addView(content,new LinearLayout.LayoutParams(-1,0,1));
         page.addView(dial,new LinearLayout.LayoutParams(-1,dial.dp(184)));
         page.setOnApplyWindowInsetsListener((view,insets)-> {
