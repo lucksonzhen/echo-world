@@ -159,6 +159,8 @@ public final class ScreenAssistantService extends AccessibilityService {
         instance = new WeakReference<>(this);
         if (settings.isPauseDescriptionEnabled() && settings.isConsentGranted() && MediaPauseMonitor.hasAccess(this)) setPauseMode(true);
         if (settings.isImageWatchEnabled() && settings.isConsentGranted()) setImageWatch(true);
+        registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+        receiverRegistered = true;
         try {
             overlay = new AssistantOverlay(this, new AssistantOverlay.Listener() {
                 @Override public void onCommand(String command) { handleCommand(command); }
@@ -171,12 +173,9 @@ public final class ScreenAssistantService extends AccessibilityService {
             });
             updatePanel();
             overlay.show();
-            registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
-            receiverRegistered = true;
             report("屏幕描述服务已开启。请先打开语音待命设置，完成一次配置并开启语音待命，之后就能在其他应用中免触摸发出指令。", true);
         } catch (RuntimeException error) {
-            report("无法显示悬浮控制，请关闭后重新启用无障碍服务。", true);
-            disableSelf();
+            report("备用悬浮按钮暂不可用，仍可通过语音使用助手。", true);
         }
     }
 
@@ -213,6 +212,13 @@ public final class ScreenAssistantService extends AccessibilityService {
     private void handleCommand(String text) {
         if (!connected) return;
         ScreenCommand command = ScreenCommand.parse(text == null ? "" : text);
+        if (command.kind == ScreenCommand.Kind.OVERLAY_HIDE || command.kind == ScreenCommand.Kind.OVERLAY_SHOW) {
+            boolean show=command.kind==ScreenCommand.Kind.OVERLAY_SHOW;
+            settings.setOverlayVisible(show);
+            try { if (overlay!=null) overlay.setEnabled(show); }
+            catch (RuntimeException unavailable) { report("暂时无法显示备用悬浮按钮，语音服务仍可使用。",true); return; }
+            report(show ? "已显示可移动的备用悬浮按钮。" : "已隐藏悬浮按钮，语音与屏幕读取服务继续运行。",true); return;
+        }
         if (!settings.isConsentGranted()) latestDescription = "";
         if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser("已停止。"); return; }
         if (command.kind == ScreenCommand.Kind.MONITOR_STOP) { stopFromUser(MONITOR_STOPPED); return; }

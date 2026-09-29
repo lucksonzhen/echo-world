@@ -3,6 +3,12 @@ package com.tingjian.assistant;
 public final class ScreenCommandTest {
     private static int checked;
     public static void main(String[] args) {
+        check("隐藏悬浮窗",ScreenCommand.Kind.OVERLAY_HIDE);
+        check("关闭悬浮按钮",ScreenCommand.Kind.OVERLAY_HIDE);
+        check("显示悬浮球",ScreenCommand.Kind.OVERLAY_SHOW);
+        check("打开悬浮窗",ScreenCommand.Kind.OVERLAY_SHOW);
+        check("不要隐藏悬浮窗",ScreenCommand.Kind.QUESTION);
+        check("显示悬浮窗是什么",ScreenCommand.Kind.QUESTION);
         check("描述屏幕", ScreenCommand.Kind.DESCRIBE);
         check("请描述屏幕。", ScreenCommand.Kind.DESCRIBE);
         check("读文字", ScreenCommand.Kind.READ_TEXT);

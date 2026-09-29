@@ -182,7 +182,8 @@ public final class VoiceWakeController {
         return kind == ScreenCommand.Kind.STOP || kind == ScreenCommand.Kind.PAUSE_STOP
                 || kind == ScreenCommand.Kind.MONITOR_STOP || kind == ScreenCommand.Kind.AUTO_IMAGE_STOP
                 || kind == ScreenCommand.Kind.FASTER || kind == ScreenCommand.Kind.SLOWER
-                || kind == ScreenCommand.Kind.NORMAL_RATE || kind == ScreenCommand.Kind.REPEAT;
+                || kind == ScreenCommand.Kind.NORMAL_RATE || kind == ScreenCommand.Kind.REPEAT
+                || kind == ScreenCommand.Kind.OVERLAY_HIDE || kind == ScreenCommand.Kind.OVERLAY_SHOW;
     }
 
     private void expire(long now) {

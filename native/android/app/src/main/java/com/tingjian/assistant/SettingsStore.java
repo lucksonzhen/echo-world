@@ -39,6 +39,8 @@ public final class SettingsStore {
     // A legacy backend consent does not authorize sending screenshots to a newly selected API.
     public boolean isConsentGranted() { synchronized (SETTINGS_LOCK) { return prefs.contains("connection_provider") && prefs.getBoolean("screen_consent", false); } }
     public float getSpeechRate() { return prefs.getFloat("speech_rate", 1.35f); }
+    public boolean isOverlayVisible() { return prefs.getBoolean("overlay_visible", false); }
+    public void setOverlayVisible(boolean visible) { prefs.edit().putBoolean("overlay_visible",visible).apply(); }
     public void setSpeechRate(float rate) {
         prefs.edit().putFloat("speech_rate", Math.max(1f, Math.min(1.8f, rate))).apply();
     }

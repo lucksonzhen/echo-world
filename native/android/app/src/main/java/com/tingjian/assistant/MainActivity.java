@@ -70,6 +70,9 @@ public final class MainActivity extends Activity {
         text(body,"完成一次设置后，直接说“小助手，描述屏幕”。日常浏览无需找按钮，也不用下载图片或视频。",16);
         status = text(body,"",16); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         button(body,"逐项语音配置引导",this::openSetupGuide);
+        text(body,"支持系统读屏：单指左右滑动听取控件，双击执行，不需要目视找按钮。备用悬浮按钮默认隐藏，语音操作不依赖悬浮窗。",16);
+        button(body,"显示可移动的备用悬浮按钮",()->setOverlayVisible(true));
+        button(body,"隐藏悬浮按钮，保留语音服务",()->setOverlayVisible(false));
         heading(body,"1. 手机直连模型 API",20);
         text(body,"手机自行截图、请求模型并朗读，无需电脑或同一 Wi-Fi。仍需联网，图片会发送到你选择的 API 服务商。",16);
         selectedProvider = store.getProvider();
@@ -96,7 +99,7 @@ public final class MainActivity extends Activity {
             report("已清除本机 API 密钥和中转口令，并停止识别与语音待命。");
         });
         heading(body,"2. 允许按命令识别屏幕",20);
-        text(body,"开启后会出现悬浮按钮。发出描述命令时，会将当前压缩画面直接发送到上方选择的模型 API；自定义接口运营方也会收到画面和密钥。仅选择原有中转模式时才经中转服务。若另外开启暂停讲解，播放器暂停后也会发送一张当前画面。图片自动描述会在本机读取前台应用的控件类型、标签和位置以发现大图，并上传该图片区域。视频观察约 8 秒取 6 帧，不包含声音。截图和控件信息只在内存中处理，不保存到相册。最近描述暂存在内存供重听，锁屏、撤销同意或关闭服务后清除。",16);
+        text(body,"备用悬浮按钮默认隐藏，可按需显示并移动。发出描述命令时，会将当前压缩画面直接发送到上方选择的模型 API；自定义接口运营方也会收到画面和密钥。仅选择原有中转模式时才经中转服务。若另外开启暂停讲解，播放器暂停后也会发送一张当前画面。图片自动描述会在本机读取前台应用的控件类型、标签和位置以发现大图，并上传该图片区域。视频观察约 8 秒取 6 帧，不包含声音。截图和控件信息只在内存中处理，不保存到相册。最近描述暂存在内存供重听，锁屏、撤销同意或关闭服务后清除。",16);
         consent = new CheckBox(this); consent.setText("我了解并允许按上述方式发送当前屏幕进行描述"); consent.setTextSize(16); consent.setMinHeight(dp(56)); consent.setTextColor(INK);
         consent.setChecked(store.isConsentGranted()); body.addView(consent);
         consent.setOnCheckedChangeListener((button, checked) -> { if (!checked) { api.cancel(); setCheckingConnection(false); store.revokeConsent(); WakeWordService.stopListening(this); ScreenAssistantService.dispatchCommand("停止"); report("已关闭语音待命并暂停屏幕识别。"); } });
@@ -208,6 +211,11 @@ public final class MainActivity extends Activity {
         api.cancel(); setCheckingConnection(false);
         startActivityForResult(new Intent(this,SetupGuideActivity.class),83);
     }
+    private void setOverlayVisible(boolean visible) {
+        store.setOverlayVisible(visible);
+        ScreenAssistantService.dispatchCommand(visible ? "显示悬浮按钮" : "隐藏悬浮按钮");
+        report(visible ? "备用悬浮按钮已设为显示，可拖动或用读屏操作菜单移动。无障碍服务连接后生效。" : "备用悬浮按钮已隐藏，不影响已开启的语音服务。");
+    }
     @Override protected void onSaveInstanceState(Bundle state) { state.putBoolean("guide_offered",guideOffered); super.onSaveInstanceState(state); }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
@@ -271,7 +279,7 @@ public final class MainActivity extends Activity {
     private void refreshPermissionStatus() {
         setPermissionText(accessibilityPermission, "无障碍服务：" + (ScreenAssistantService.isConnected() ? "已连接，可以读取屏幕。" : "未连接，请在系统设置中检查。"));
         setPermissionText(microphonePermission, "麦克风权限：" + (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                ? "已允许；语音待命需单独开启，系统麦克风总开关也需打开。" : "未允许，语音待命不可用；悬浮按钮仍可使用。"));
+                ? "已允许；语音待命需单独开启，系统麦克风总开关也需打开。" : "未允许，语音待命不可用；可用读屏操作应用，或手动显示备用悬浮按钮。"));
         setPermissionText(playbackPermission, "通知使用权：" + (MediaPauseMonitor.hasAccess(this)
                 ? "已允许读取播放状态。" : "未允许；仅暂停讲解需要。"));
         NotificationManager notifications = getSystemService(NotificationManager.class);

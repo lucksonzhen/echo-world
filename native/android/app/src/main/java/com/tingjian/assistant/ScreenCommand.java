@@ -9,7 +9,7 @@ public final class ScreenCommand {
         /** Turns off only the automatic image description. */
         AUTO_IMAGE_STOP,
         /** Stops every unattended screen capture (image watch and pause narration); voice standby stays on. */
-        MONITOR_STOP
+        MONITOR_STOP, OVERLAY_SHOW, OVERLAY_HIDE
     }
     public final Kind kind;
     public final String text;
@@ -17,6 +17,8 @@ public final class ScreenCommand {
     public static ScreenCommand parse(String raw) {
         String text = raw == null ? "" : raw.trim();
         String normalized = text.replaceAll("[\\s，。！？,.!?]", "");
+        if (normalized.matches("(请)?(隐藏|关闭|收起)(悬浮窗|悬浮按钮|悬浮球)")) return new ScreenCommand(Kind.OVERLAY_HIDE,text);
+        if (normalized.matches("(请)?(显示|打开)(悬浮窗|悬浮按钮|悬浮球)")) return new ScreenCommand(Kind.OVERLAY_SHOW,text);
         if (normalized.matches("(请帮我|请|帮我)?(再说一遍|再读一遍|重读一遍|重复朗读|重复描述|重播描述)")) return new ScreenCommand(Kind.REPEAT, text);
         if (normalized.matches("(请)?(开启|开始)?(暂停讲解|暂停后讲解)")) return new ScreenCommand(Kind.PAUSE_START, text);
         if (normalized.matches("(请)?(关闭|停止|结束)(暂停讲解|暂停后讲解)")) return new ScreenCommand(Kind.PAUSE_STOP, text);

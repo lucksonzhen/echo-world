@@ -54,6 +54,11 @@ final class SetupGuideChecks {
         try {
             open();
             ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"guide starts at provider for an unconfigured install"));
+            ui(()->activity.handleVoice("小助手选择第二项"));
+            ui(()->check(((android.widget.Spinner)field("choices")).getSelectedItemPosition()==1,"spoken option two selects DeepSeek without locating a button"));
+            ui(()->activity.handleVoice("小助手选择第一项"));
+            ui(()->activity.handleVoice("下一步"));
+            ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"unprefixed or unrelated speech cannot advance setup"));
             next();
             ui(()->check(field("step")==SetupFlow.Step.ADDRESS,"provider requires explicit confirmation"));
             next(); next();
@@ -66,19 +71,34 @@ final class SetupGuideChecks {
             ui(()->check(!((EditText)field("field")).isSaveEnabled(),"credential excluded from saved view state"));
             ui(()->activity.finish()); open();
             ui(()->check(field("step")==SetupFlow.Step.KEY && ((EditText)field("field")).getText().length()==0,"resume keeps confirmed progress but discards unsaved key"));
-            ui(()->((EditText)field("field")).setText("guide-fixture-secret")); next();
+            ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("fixture","guide-fixture-secret")));
+            ui(()->activity.handleVoice("小助手粘贴密钥"));
+            ui(()->check("guide-fixture-secret".contentEquals(((EditText)field("field")).getText())
+                    && !((TextView)field("feedback")).getText().toString().contains("guide-fixture-secret"),"explicit voice paste fills key without speaking its value"));
+            next();
             check(settings.isConfigured() && !settings.isConsentGranted(),"guide saves connection without granting screenshot consent");
             check(!runner.getTargetContext().getSharedPreferences("screen_assistant",0).getAll().toString().contains("guide-fixture-secret"),"guide credential stored encrypted");
             AtomicInteger calls=new AtomicInteger();
             AssistantApi fake=new AssistantApi(runner.getTargetContext(),url->new Fixture(url,calls.incrementAndGet()==1 ? 401 : 200));
             ui(()-> { ((AssistantApi)field("api")).close(); set("api",fake); });
+            ui(()->activity.handleVoice("小助手测试连接"));
+            check(calls.get()==0,"voice test request waits for a separate confirmation");
+            ui(()->activity.handleVoice("小助手取消操作"));
+            ui(()->activity.handleVoice("小助手确认操作"));
+            check(calls.get()==0,"cancelled voice confirmation cannot send a request");
             next(); waitForIdleRequest();
             ui(()->check(field("step")==SetupFlow.Step.TEST && ((TextView)field("feedback")).getText().toString().contains("HTTP 401"),"failed test remains on test step with safe error"));
             check(!settings.isConnectionVerified(),"failed test cannot mark configuration verified");
-            next(); waitForIdleRequest();
+            ui(()->activity.handleVoice("小助手测试连接"));
+            ui(()->activity.handleVoice("小助手确认操作")); waitForIdleRequest();
             ui(()->check(field("step")==SetupFlow.Step.CONSENT,"successful test advances exactly one step"));
             check(calls.get()==2 && settings.isConnectionVerified() && !settings.isConsentGranted(),"only explicit tests send requests and consent remains separate");
-            next();
+            ui(()->activity.handleVoice("小助手下一步"));
+            check(!settings.isConsentGranted(),"generic next command cannot grant screen upload consent");
+            ui(()->activity.handleVoice("小助手同意上传"));
+            check(!settings.isConsentGranted(),"spoken upload consent is explained before confirmation");
+            ui(()->activity.handleVoice("小助手确认操作"));
             check(settings.isConsentGranted() && settings.isConnectionVerified(),"explicit consent saves without invalidating successful connection test");
             click("重听当前步骤");
             ui(()->check(field("step")==SetupFlow.Step.ACCESSIBILITY || field("step")==SetupFlow.Step.VOICE,"replay does not skip required permissions"));
@@ -87,8 +107,12 @@ final class SetupGuideChecks {
             check(!settings.isConnectionVerified(),"changing model invalidates saved test result");
             settings.markConnectionVerified(); settings.clearCredential();
             check(!settings.isConnectionVerified(),"clearing credential invalidates saved test result");
+            check(!settings.isOverlayVisible(),"overlay hidden by default");
+            settings.setOverlayVisible(true); check(new SettingsStore(runner.getTargetContext()).isOverlayVisible(),"overlay opt-in survives settings reload");
+            settings.setOverlayVisible(false); check(!settings.isOverlayVisible(),"overlay can be hidden independently of connection settings");
         } finally {
             if (activity!=null) ui(()->activity.finish());
+            runner.getTargetContext().getSystemService(android.content.ClipboardManager.class).clearPrimaryClip();
             prefs.edit().clear().commit(); runner.getTargetContext().getSharedPreferences("screen_assistant",0).edit().clear().commit();
         }
         return passed;

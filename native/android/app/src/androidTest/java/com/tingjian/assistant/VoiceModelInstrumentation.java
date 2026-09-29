@@ -187,7 +187,7 @@ public final class VoiceModelInstrumentation extends Instrumentation {
         }
     }
 
-    private static short[] readPcmWave(InputStream input) throws IOException {
+    static short[] readPcmWave(InputStream input) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int count;

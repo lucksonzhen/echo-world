@@ -38,6 +38,11 @@ public final class WakeWordService extends Service {
     private static final String ACTION_STOP = "com.tingjian.assistant.STOP_LISTENING";
     private static final int NOTIFICATION_ID = 42;
     private static volatile boolean running;
+    private static volatile boolean setupMode;
+    public static boolean isSetupMode() { return setupMode; }
+    public static void startSetup(Context context) {
+        context.startForegroundService(new Intent(context,WakeWordService.class).putExtra("setup_mode",true));
+    }
     private static volatile String status = "语音待命尚未开启。";
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -79,7 +84,13 @@ public final class WakeWordService extends Service {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             ScreenAssistantService.dispatchCommand("停止"); stopSelf(); return START_NOT_STICKY;
         }
-        if (live) return START_NOT_STICKY;
+        boolean requestedSetup=intent!=null && intent.getBooleanExtra("setup_mode",false) && SetupGuideActivity.isVisible();
+        if (live) {
+            setupMode=requestedSetup; wake.reset();
+            if (setupMode && recorder!=null) SetupGuideActivity.voiceReady();
+            return START_NOT_STICKY;
+        }
+        setupMode=requestedSetup;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             setStatus("请先允许麦克风权限，再开启语音待命。", true); stopSelf(); return START_NOT_STICKY;
         }
@@ -90,7 +101,7 @@ public final class WakeWordService extends Service {
             setStatus("系统未允许启动麦克风，请回到应用重新开启语音待命。", true);
             stopSelf(); return START_NOT_STICKY;
         }
-        if (!ScreenAssistantService.isConnected()) {
+        if (!setupMode && !ScreenAssistantService.isConnected()) {
             setStatus("请先在系统无障碍设置中开启屏幕读取服务。", true); stopSelf(); return START_NOT_STICKY;
         }
         live = true; running = true; recognitionSession = wake.start();
@@ -150,10 +161,16 @@ public final class WakeWordService extends Service {
             audio.startRecording();
             if (audio.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException();
             final long session = recognitionSession;
-            main.post(() -> { if (live) setStatus("语音待命已开启，可以回到正在浏览的应用。", true); });
+            main.post(() -> { if (live) {
+                setStatus(setupMode ? "配置语音操作已开启，请在提示结束后说指令。" : "语音待命已开启，可以回到正在浏览的应用。", !setupMode);
+                if (setupMode) SetupGuideActivity.voiceReady();
+            } });
             short[] buffer = new short[1600];
             boolean wasAvailable = true;
             boolean utteranceHadNarration = false;
+            long setupEpoch=SetupGuideActivity.voiceEpoch();
+            boolean setupBlocked=SetupGuideActivity.isVoiceBlocked();
+            boolean decoderSetup=setupMode;
             while (live && !Thread.currentThread().isInterrupted()) {
                 int count = audio.read(buffer, 0, buffer.length, AudioRecord.READ_BLOCKING);
                 if (!live) break;
@@ -169,13 +186,28 @@ public final class WakeWordService extends Service {
                     });
                 }
                 if (!available) continue;
-                utteranceHadNarration |= ScreenAssistantService.isNarrating();
+                long epoch=SetupGuideActivity.voiceEpoch();
+                boolean blocked=SetupGuideActivity.isVoiceBlocked();
+                if (decoderSetup!=setupMode || (setupMode && (epoch!=setupEpoch || blocked!=setupBlocked))) {
+                    // Discard the prompt and its following silence before accepting the first user command.
+                    recognizer.reset(); utteranceHadNarration=false; setupEpoch=epoch;
+                    decoderSetup=setupMode; setupBlocked=blocked;
+                }
+                utteranceHadNarration |= setupMode ? SetupGuideActivity.isVoiceBlocked() : ScreenAssistantService.isNarrating();
                 if (recognizer.acceptWaveForm(buffer, count)) {
                     String words = new JSONObject(recognizer.getResult()).optString("text", "");
                     final boolean overlappedNarration = utteranceHadNarration;
+                    final boolean wasSetup=setupMode;
+                    final long capturedEpoch=setupEpoch;
                     utteranceHadNarration = false;
                     main.post(() -> {
                         if (!live || !canHearCommands()) return;
+                        if (wasSetup!=setupMode) return;
+                        if (setupMode) {
+                            boolean stopOnly=SetupVoiceCommand.parse(words).kind==SetupVoiceCommand.Kind.MUTE;
+                            if (capturedEpoch==SetupGuideActivity.voiceEpoch() && (stopOnly || (!overlappedNarration && !SetupGuideActivity.isVoiceBlocked()))) SetupGuideActivity.receiveVoice(words);
+                            return;
+                        }
                         // Only explicit stop/disable/rate controls remain active during our narration.
                         wake.setNarrating(overlappedNarration || ScreenAssistantService.isNarrating());
                         wake.onFinal(session, words);
@@ -184,7 +216,7 @@ public final class WakeWordService extends Service {
                     String partial = new JSONObject(recognizer.getPartialResult()).optString("partial", "");
                     final boolean overlappedNarration = utteranceHadNarration;
                     main.post(() -> {
-                        if (!live || !canHearCommands()) return;
+                        if (!live || !canHearCommands() || setupMode) return;
                         wake.setNarrating(overlappedNarration || ScreenAssistantService.isNarrating());
                         // Repeated observations establish a stable explicit stop.
                         // Partial text can never trigger a screenshot or AI request.
@@ -196,6 +228,7 @@ public final class WakeWordService extends Service {
             main.post(() -> {
                 if (!live) return;
                 setStatus("本地语音识别未能启动或已中断，请回到应用重新开启，并检查麦克风权限。", true);
+                if (setupMode) SetupGuideActivity.voiceFailed();
                 stopSelf();
             });
         } finally {
@@ -227,7 +260,7 @@ public final class WakeWordService extends Service {
     private boolean canHearCommands() {
         PowerManager power = getSystemService(PowerManager.class);
         KeyguardManager keyguard = getSystemService(KeyguardManager.class);
-        return !silenced && !SetupGuideActivity.isVisible() && power.isInteractive() && !keyguard.isKeyguardLocked();
+        return !silenced && (setupMode ? SetupGuideActivity.isVisible() : !SetupGuideActivity.isVisible()) && power.isInteractive() && !keyguard.isKeyguardLocked();
     }
 
     private Notification notification(String text) {
@@ -246,7 +279,7 @@ public final class WakeWordService extends Service {
     }
 
     @Override public void onDestroy() {
-        live = false; running = false;
+        live = false; running = false; setupMode=false;
         wake.stop(); main.removeCallbacksAndMessages(null);
         AudioRecord audio = recorder;
         if (audio != null) try { audio.stop(); } catch (RuntimeException ignored) {}
