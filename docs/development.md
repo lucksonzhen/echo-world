@@ -31,7 +31,7 @@ Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay
 powershell -ExecutionPolicy Bypass -File native/android/build-debug.ps1 -JavaHome 'JDK目录' -SdkRoot 'Android SDK目录'
 ```
 
-首次克隆后先运行 `npm ci`，并按[服务端说明](../server/README.md)从 `.env.example` 创建 `.env`；默认端口为 `8787`。上述构建脚本下载并校验内置 Vosk 中文模型（默认大模型 `vosk-model-cn-0.22`，约 1.27 GiB，首次下载较慢；低存储设备可先运行 `node native/android/prepare-voice-model.mjs --small` 改用约 42 MiB 的小模型），再调用 Gradle，首次构建需要联网。安装包输出到 `native/android/app/build/outputs/apk/debug/app-debug.apk`；模型许可见[第三方声明](../native/android/THIRD_PARTY_NOTICES.md)。
+首次克隆后先运行 `npm ci`。Android 1.2.0 可直接在手机填写模型 API Key，无需 `.env` 或后端；仅 Web / iOS / 中转模式按[服务端说明](../server/README.md)配置 `.env`。上述构建脚本下载并校验默认 Vosk 中文大模型（约 1.27 GiB 下载），再调用 Gradle。小模型与关闭调试的手机试用构建见[手机直连说明](android-direct-api.md#构建与验证)，不要用会重新准备大模型的调试脚本替代该流程。调试输出为 `native/android/app/build/outputs/apk/debug/app-debug.apk`；模型许可见[第三方声明](../native/android/THIRD_PARTY_NOTICES.md)。
 
 已配置 Java 和 SDK 的其他平台，可先运行 `node native/android/prepare-voice-model.mjs`（可加 `--small`），再进入 `native/android` 运行 `./gradlew :app:assembleDebug`。iPhone 构建见 [iOS 说明](../native/ios/README.md)。
 

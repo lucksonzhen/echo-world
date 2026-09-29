@@ -9,9 +9,9 @@ android {
         applicationId 'com.tingjian.assistant.screen'
         minSdk 30
         targetSdk 35
-        versionCode 2
-        versionName '1.1.0'
-        testInstrumentationRunner 'com.tingjian.assistant.VoiceModelInstrumentation'
+        versionCode 3
+        versionName '1.2.0'
+        testInstrumentationRunner project.findProperty('testRunner') ?: 'com.tingjian.assistant.VoiceModelInstrumentation'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -20,6 +20,14 @@ android {
     buildTypes {
         debug { manifestPlaceholders = [allowCleartext: 'true'] }
         release { manifestPlaceholders = [allowCleartext: 'false']; minifyEnabled false }
+        // Personal sideload build: retain the previous APK's local signing identity for upgrades,
+        // but disallow debugging and cleartext traffic now that users enter provider keys.
+        phonePreview {
+            initWith release
+            signingConfig signingConfigs.debug
+            debuggable false
+            matchingFallbacks = ['release']
+        }
     }
 }
 

@@ -18,16 +18,16 @@ Android 使用系统 [截图 API](https://developer.android.com/reference/androi
 
 ## Android 首次设置
 
-1. 按 [服务端说明](../server/README.md) 启动 AI 服务，在应用中填写服务地址和访问口令。模型密钥只放服务端。
+1. 1.2.0 默认手机直连 Gemini：输入自己的 API Key，确认模型名，点“保存并测试识图连接”。无需电脑；详见 [手机直连配置](android-direct-api.md)。
 2. 确认截图上传说明，通过系统设置启用“听见世界助手”无障碍服务；可使用 TalkBack 完成。
 3. 回到应用，选择“允许麦克风并开启语音待命”，接受麦克风授权，等待开启提示。
 4. 切回目标 App，说“小助手，描述屏幕”。悬浮控件只是辅助入口。
 
-模拟器访问电脑使用 `http://10.0.2.2:服务端口`；真机使用电脑局域网地址或 HTTPS 服务，不能使用电脑的 `localhost`。
+只有选择“原有中转服务”时才需要后端。直连模式仅使用 HTTPS；手机试用构建也禁止中转模式的 HTTP。debug 构建仍可用模拟器地址 `http://10.0.2.2:端口` 调试中转服务。
 
 若安装后提示“受限设置”，按系统要求为可信安装包 [允许受限设置](https://support.google.com/android/answer/12623953?hl=en)，再开启无障碍服务。
 
-语音待命显示麦克风标记和持续通知。重启或被系统终止后，需要回到应用重新开启；应用遵守 [麦克风前台服务限制](https://developer.android.com/develop/background-work/services/fgs/service-types#microphone)。默认内置较大的 Vosk 中文模型，首次开启需要解压约 2 GiB 并花费一到几分钟，请保持屏幕点亮并留足存储空间。
+语音待命显示麦克风标记和持续通知。重启或被系统终止后，需要回到应用重新开启；应用遵守 [麦克风前台服务限制](https://developer.android.com/develop/background-work/services/fgs/service-types#microphone)。源码准备脚本默认使用大 Vosk 模型（解压约 2 GiB）；1.2.0 手机试用 APK 使用小模型，建议预留至少 1 GB 空间，首次待命时解压。小模型在噪声、口音和远场下效果可能较弱。
 
 ## 常用口令
 

@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
-import java.net.URI;
 import java.security.KeyStore;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -25,16 +24,20 @@ public final class SettingsStore {
         public final String serverUrl;
         public final String accessToken;
         public final boolean consentGranted;
-        private ConnectionSnapshot(String serverUrl, String accessToken, boolean consentGranted) {
+        public final String provider, model;
+        private ConnectionSnapshot(String serverUrl, String accessToken, boolean consentGranted, String provider, String model) {
             this.serverUrl = serverUrl; this.accessToken = accessToken; this.consentGranted = consentGranted;
+            this.provider = provider; this.model = model;
         }
+        public boolean isDirect() { return !"backend".equals(provider); }
     }
     public ConnectionSnapshot snapshot() {
         synchronized (SETTINGS_LOCK) {
-            return new ConnectionSnapshot(prefs.getString("server_url", ""), readAccessToken(), prefs.getBoolean("screen_consent", false));
+            return new ConnectionSnapshot(getServerUrl(), readAccessToken(), isConsentGranted(), getProvider(), getModel());
         }
     }
-    public boolean isConsentGranted() { synchronized (SETTINGS_LOCK) { return prefs.getBoolean("screen_consent", false); } }
+    // A legacy backend consent does not authorize sending screenshots to a newly selected API.
+    public boolean isConsentGranted() { synchronized (SETTINGS_LOCK) { return prefs.contains("connection_provider") && prefs.getBoolean("screen_consent", false); } }
     public float getSpeechRate() { return prefs.getFloat("speech_rate", 1.35f); }
     public void setSpeechRate(float rate) {
         prefs.edit().putFloat("speech_rate", Math.max(1f, Math.min(1.8f, rate))).apply();
@@ -43,40 +46,59 @@ public final class SettingsStore {
     public void setPauseDescriptionEnabled(boolean enabled) { prefs.edit().putBoolean("pause_description", enabled).apply(); }
     public boolean isImageWatchEnabled() { return prefs.getBoolean("image_watch", false); }
     public void setImageWatchEnabled(boolean enabled) { prefs.edit().putBoolean("image_watch", enabled).apply(); }
-    public String getServerUrl() { synchronized (SETTINGS_LOCK) { return prefs.getString("server_url", ""); } }
+    public String getProvider() { synchronized (SETTINGS_LOCK) { return prefs.getString("connection_provider", "gemini"); } }
+    public String getModel() { synchronized (SETTINGS_LOCK) { return prefs.getString("direct_model", DirectApiConfig.defaultModel(getProvider())); } }
+    public String getServerUrl() { synchronized (SETTINGS_LOCK) {
+        return prefs.getString("backend".equals(getProvider()) ? "server_url" : "direct_url", DirectApiConfig.defaultUrl(getProvider()));
+    } }
+    public boolean isConfigured() { synchronized (SETTINGS_LOCK) {
+        return !getServerUrl().isEmpty() && ("backend".equals(getProvider())
+                || (!getModel().isEmpty() && !prefs.getString("api_key_encrypted", "").isEmpty()));
+    } }
     public String getAccessToken() {
         synchronized (SETTINGS_LOCK) { return readAccessToken(); }
     }
     private String readAccessToken() {
-        String stored = prefs.getString("token_encrypted", "");
+        String stored = prefs.getString("backend".equals(getProvider()) ? "token_encrypted" : "api_key_encrypted", "");
         if (stored.isEmpty()) return "";
         try {
             String[] pieces = stored.split(":", 2);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(pieces[0], Base64.NO_WRAP)));
             return new String(cipher.doFinal(Base64.decode(pieces[1], Base64.NO_WRAP)), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Exception error) { throw new IllegalStateException("无法读取访问口令，请打开听见世界重新保存连接设置。"); }
+        } catch (Exception error) { throw new IllegalStateException("无法读取已保存的密钥，请打开听见世界重新输入并保存。"); }
     }
     public void save(String serverUrl, String token, boolean consent) throws Exception {
+        saveConnection("backend", serverUrl, "", token, consent);
+    }
+    public void saveConnection(String provider, String serverUrl, String model, String token, boolean consent) throws Exception {
         synchronized (SETTINGS_LOCK) {
-            String url = validateUrl(serverUrl, (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+            DirectApiConfig.validateProvider(provider);
+            String url = DirectApiConfig.validateBaseUrl(provider, serverUrl, (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+            String cleanModel = DirectApiConfig.validateModel(provider, model);
+            token = DirectApiConfig.validateKey(provider, token);
             String encrypted = "";
             if (!token.trim().isEmpty()) {
                 Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
                 cipher.init(Cipher.ENCRYPT_MODE, key());
                 encrypted = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP) + ":" + Base64.encodeToString(cipher.doFinal(token.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8)), Base64.NO_WRAP);
             }
-            prefs.edit().putString("server_url", url).putString("token_encrypted", encrypted).putBoolean("screen_consent", consent).apply();
+            boolean backend = "backend".equals(provider);
+            SharedPreferences.Editor editor = prefs.edit().putString("connection_provider", provider)
+                    .putString(backend ? "server_url" : "direct_url", url)
+                    .putString(backend ? "token_encrypted" : "api_key_encrypted", encrypted)
+                    .putBoolean("screen_consent", consent);
+            if (!backend) editor.putString("direct_model", cleanModel);
+            if (!editor.commit()) throw new IllegalStateException("无法保存连接设置，请重试。");
         }
     }
+    public void clearCredential() { synchronized (SETTINGS_LOCK) {
+        prefs.edit().remove("api_key_encrypted").remove("token_encrypted").apply();
+        revokeConsent();
+    } }
     public void revokeConsent() { synchronized (SETTINGS_LOCK) { prefs.edit().putBoolean("screen_consent", false).putBoolean("pause_description", false).putBoolean("image_watch", false).apply(); } }
     public static String validateUrl(String input, boolean debug) {
-        try {
-            URI uri = new URI(input.trim());
-            if (uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) throw new Exception();
-            if (!("https".equals(uri.getScheme()) || (debug && "http".equals(uri.getScheme())))) throw new Exception();
-            return input.trim().replaceAll("/+$", "");
-        } catch (Exception error) { throw new IllegalArgumentException(debug ? "请输入完整服务地址，例如 http://192.168.1.10:8787。" : "请输入有效的 HTTPS 服务地址。"); }
+        return DirectApiConfig.validateBaseUrl("backend", input, debug);
     }
     private static synchronized SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);

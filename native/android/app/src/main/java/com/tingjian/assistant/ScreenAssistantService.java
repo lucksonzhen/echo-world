@@ -240,8 +240,8 @@ public final class ScreenAssistantService extends AccessibilityService {
             report("请先打开听见世界应用，阅读并同意按指令采集画面及上传识别的说明。", true);
             return;
         }
-        if (settings.getServerUrl() == null || settings.getServerUrl().trim().isEmpty()) {
-            report("请先在听见世界应用中配置描述服务地址。", true);
+        if (!settings.isConfigured()) {
+            report("请先在听见世界应用中配置模型 API 和密钥。", true);
             return;
         }
         if (screenUnavailable()) { report("屏幕已锁定或关闭，请解锁后再描述。", true); return; }
@@ -325,7 +325,7 @@ public final class ScreenAssistantService extends AccessibilityService {
                 || !settings.isConsentGranted() || screenUnavailable() || active != null
                 || narrator.isSpeaking() || SystemClock.uptimeMillis() < ignorePauseUntil
                 || !pauseMonitor.isStillPaused(packageName)) return;
-        if (settings.getServerUrl().trim().isEmpty()) return;
+        if (!settings.isConfigured()) return;
         cancelCurrent();
         Session session = new Session(generation, false, "brief", null, packageName, true);
         active = session;
@@ -337,7 +337,7 @@ public final class ScreenAssistantService extends AccessibilityService {
     private void describeFoundImage(String packageName, Rect bounds) {
         if (!connected || !imageWatchEnabled || !foregroundPackage.equals(packageName)
                 || !settings.isConsentGranted() || screenUnavailable()
-                || settings.getServerUrl().trim().isEmpty()) return;
+                || !settings.isConfigured()) return;
         if (active != null || narrator.isSpeaking()) {
             // Busy with a request or speech; look again once the screen has been quiet.
             imageWatch.onScreenChanged(packageName);
