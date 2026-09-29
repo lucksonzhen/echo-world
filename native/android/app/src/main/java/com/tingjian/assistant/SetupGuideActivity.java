@@ -119,7 +119,7 @@ public final class SetupGuideActivity extends Activity {
         String title, detail, action = "完成本项，继续";
         switch (step) {
             case PROVIDER:
-                title = "模型接口类型"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。可说小助手，选择第二项，选择 DeepSeek；选好后说小助手，下一步。默认选择 Gemini。";
+                title = "模型接口配置"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。可说小助手，选择第二项，选择 DeepSeek；选好后说小助手，下一步。默认选择 Gemini。";
                 choices = new DialPicker(dial,selectionCard(),title,
                         new String[]{"Gemini 官方 API", "DeepSeek 官方 API", "OpenAI 官方 API", "自定义 OpenAI 兼容接口", "原有中转服务"});
                 for (int i=0;i<GUIDE_PROVIDERS.length;i++) if (provider.equals(GUIDE_PROVIDERS[i])) choices.setSelection(i);

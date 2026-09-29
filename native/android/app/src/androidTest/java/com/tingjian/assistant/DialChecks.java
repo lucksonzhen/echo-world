@@ -38,15 +38,15 @@ final class DialChecks {
                 android.widget.LinearLayout page=(android.widget.LinearLayout)dial.getParent();
                 check(page.getChildAt(page.getChildCount()-1)==dial && page.getChildAt(0) instanceof android.widget.ScrollView,"wheel is a fixed sibling below scrollable content");
                 BottomDial.Item provider=dial.current();
-                check(provider.getText().contains("Gemini"),"wheel announces the current provider without reading a key");
+                check(provider.getText().equals("模型接口配置"),"wheel presents a stable model configuration entry");
                 snapshot(activity,"dial-guide.png");
                 dial.performClick(); dial.move(1);
                 check(dial.current().getText().contains("DeepSeek"),"provider submenu scrolls to DeepSeek");
-                check(provider.getText().contains("Gemini"),"scrolling provider choices does not commit selection");
+                check(selectedProvider(activity).contains("Gemini"),"scrolling provider choices does not commit selection");
                 dial.performClick();
-                check(provider.getText().contains("DeepSeek"),"explicit wheel activation commits the provider");
+                check(selectedProvider(activity).contains("DeepSeek"),"explicit wheel activation commits the provider");
                 dial.performClick(); dial.move(-1); dial.closeMenu(false);
-                check(provider.getText().contains("DeepSeek"),"cancelling a menu preserves the confirmed provider");
+                check(selectedProvider(activity).contains("DeepSeek"),"cancelling a menu preserves the confirmed provider");
             });
             for(SetupFlow.Step preview:new SetupFlow.Step[]{SetupFlow.Step.KEY,SetupFlow.Step.CONSENT}) {
                 ui(()-> {
@@ -86,6 +86,13 @@ final class DialChecks {
             ui(()->check(speech.isEmpty(),"leaving the wheel cancels delayed announcements"));
         } finally { ui(activity::finish); runner.getTargetContext().getSharedPreferences("setup_guide",0).edit().clear().commit(); }
         return passed;
+    }
+    private String selectedProvider(SetupGuideActivity activity) {
+        try {
+            java.lang.reflect.Field field=SetupGuideActivity.class.getDeclaredField("choices"); field.setAccessible(true);
+            DialPicker picker=(DialPicker)field.get(activity);
+            return picker.label(picker.getSelectedItemPosition());
+        } catch(Exception error) { throw new AssertionError(error); }
     }
     private static void snapshot(SetupGuideActivity activity,String name) {
         try {

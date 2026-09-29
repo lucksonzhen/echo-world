@@ -19,5 +19,5 @@ final class DialPicker {
     void setSelection(int index) { boolean different=selected!=index; selected=index; update(); if(different) changed.accept(index); }
     void onChanged(java.util.function.IntConsumer listener) { changed=listener; }
     void setEnabled(boolean enabled) { entry.setEnabled(enabled); }
-    private void update() { value.setText(labels[selected]); value.setContentDescription(title+"："+labels[selected]); entry.setText(title+"："+labels[selected]); }
+    private void update() { value.setText(labels[selected]); value.setContentDescription(title+"："+labels[selected]); entry.setText(title); }
 }

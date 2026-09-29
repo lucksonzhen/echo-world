@@ -77,8 +77,8 @@ public final class MainActivity extends Activity {
         heading(body,"1. 手机直连模型 API",20);
         text(body,"手机自行截图、请求模型并朗读，无需电脑或同一 Wi-Fi。仍需联网，图片会发送到你选择的 API 服务商。",16);
         selectedProvider = store.getProvider();
-        text(body,"模型接口类型",16);
-        provider = new DialPicker(dial,text(body,"",16),"模型接口类型",
+        text(body,"模型接口配置",16);
+        provider = new DialPicker(dial,text(body,"",16),"模型接口配置",
                 new String[]{"自定义 OpenAI 兼容接口", "OpenAI 官方 API", "Gemini 官方 API", "DeepSeek 官方 API", "原有中转服务（可选）"});
         for (int i=0;i<DirectApiConfig.PROVIDERS.length;i++) if(DirectApiConfig.PROVIDERS[i].equals(selectedProvider)) provider.setSelection(i);
         urlLabel = text(body,"API 基础地址",16); url = input(body,"例如 https://服务商域名/v1",false);
