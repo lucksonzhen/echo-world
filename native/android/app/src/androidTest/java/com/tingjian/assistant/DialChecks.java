@@ -84,6 +84,32 @@ final class DialChecks {
             });
             SystemClock.sleep(700);
             ui(()->check(speech.isEmpty(),"leaving the wheel cancels delayed announcements"));
+            ui(()-> { control[0].setActive(true); control[0].announceUsage("听见世界设置"); });
+            SystemClock.sleep(700);
+            ui(()-> {
+                check(speech.size()==1 && speech.get(0).contains("屏幕底部") && speech.get(0).contains("左右滑动")
+                        && speech.get(0).contains("停下来听选项") && speech.get(0).contains("当前是"),"dial entry announces location gestures and current selection");
+                speech.clear(); control[0].choose("接口",new String[]{"甲","乙"},0,index->{});
+            });
+            SystemClock.sleep(700);
+            ui(()-> {
+                check(speech.size()==1 && speech.get(0).contains("请选择接口") && speech.get(0).contains("双击"),"submenu announces how to choose before confirmation");
+                speech.clear(); control[0].performClick();
+            });
+            SystemClock.sleep(700);
+            ui(()-> {
+                check(speech.size()==1 && speech.get(0).contains("已选择：甲") && speech.get(0).contains("已返回主拨轮")
+                        && speech.get(0).contains("左右滑动"),"confirming selection announces return and dial instructions");
+                speech.clear(); control[0].showMenu(new String[]{"测试动作"},new Runnable[]{()->{}});
+                control[0].closeMenu(true);
+            });
+            SystemClock.sleep(700);
+            ui(()-> {
+                check(speech.size()==1 && speech.get(0).contains("已返回主拨轮") && speech.get(0).contains("左右滑动"),"cancelling submenu explains the restored dial");
+                speech.clear(); control[0].announceUsage("待取消的提示"); control[0].setActive(false);
+            });
+            SystemClock.sleep(700);
+            ui(()->check(speech.isEmpty(),"leaving page cancels pending dial instructions"));
         } finally { ui(activity::finish); runner.getTargetContext().getSharedPreferences("setup_guide",0).edit().clear().commit(); }
         return passed;
     }

@@ -41,7 +41,7 @@ public final class MainActivity extends Activity {
     private BottomDial.Item checkConnectionButton, enableAssistantButton, enableVoiceButton, modelsButton;
     private boolean checkingConnection;
     private boolean guideOffered;
-    private boolean resumed, pendingVoiceStart;
+    private boolean resumed, pendingVoiceStart, pendingDialHelp;
     private final Handler main = new Handler();
     private TextView voiceStatus;
     private TextView playbackStatus;
@@ -190,7 +190,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume(); ScreenAssistantService.setAppControlsVisible(true);
-        resumed = true; dial.setActive(true);
+        resumed = true; pendingDialHelp=true; dial.setActive(true);
         if (!guideOffered && SetupFlow.needsGuide(store.isConfigured(),store.isConsentGranted(),ScreenAssistantService.isConnected(),
                 getSharedPreferences("setup_guide",MODE_PRIVATE).getBoolean("unfinished",false))) {
             openSetupGuide();
@@ -344,7 +344,12 @@ public final class MainActivity extends Activity {
         if(!resumed) return;
         if(AccessibilitySupport.hasScreenReader(this)) dial.announceForAccessibility(text); else dialNarrator.speak(text);
     }
-    @Override public void onWindowFocusChanged(boolean focused) { super.onWindowFocusChanged(focused); if(!focused && dial!=null) dial.cancelSpeech(); }
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if(dial==null) return;
+        if(!focused) dial.cancelSpeech();
+        else if(resumed && pendingDialHelp) { pendingDialHelp=false; dial.announceUsage("听见世界设置"); }
+    }
     private void report(String message) {
         if (status != null) status.setText(message);
         if (connectionStatus != null) connectionStatus.setText(message);

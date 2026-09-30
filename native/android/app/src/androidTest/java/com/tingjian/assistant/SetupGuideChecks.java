@@ -53,7 +53,7 @@ final class SetupGuideChecks {
             ui(()-> {
                 BottomDial dial=(BottomDial)field("dial");
                 check(dial.items().stream().noneMatch(item->item.getText().contains("语音操作") || item.getText().contains("语音说一项")),"setup has no microphone command entry");
-                check(!((String)field("spoken")).contains("小助手") && ((String)field("spoken")).contains("双击"),"setup narration explains dial actions instead of spoken commands");
+                check(!((String)field("spoken")).contains("小助手") && ((String)field("spoken")).contains("双击") && ((String)field("spoken")).contains("屏幕底部") && ((String)field("spoken")).contains("当前选项"),"setup narration explains dial actions instead of spoken commands");
                 dial.performClick(); dial.move(1);
                 check(((DialPicker)field("choices")).getSelectedItemPosition()==0,"browsing provider menu preserves confirmed value");
                 dial.performClick();

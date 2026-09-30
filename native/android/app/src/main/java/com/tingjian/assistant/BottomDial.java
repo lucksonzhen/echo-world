@@ -48,12 +48,15 @@ public final class BottomDial extends View {
     private boolean soundReady, active=true, dragging;
     private float anchorX, downX, downY;
     private long downTime;
+    private String usagePrefix;
     private final Runnable announce=this::announceSelection;
     private void announceSelection() {
         if(!active || !isShown() || current()==null) return;
         android.view.accessibility.AccessibilityEvent event=android.view.accessibility.AccessibilityEvent.obtain(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_SCROLLED);
         event.setFromIndex(selected); event.setToIndex(selected); event.setItemCount(visibleItems().size());
-        sendAccessibilityEventUnchecked(event); feedback.speak(description());
+        sendAccessibilityEventUnchecked(event);
+        String prefix=usagePrefix; usagePrefix=null;
+        feedback.speak(prefix==null ? description() : prefix+"。"+usageDescription());
     }
 
     public BottomDial(Context context,Feedback feedback) {
@@ -74,6 +77,13 @@ public final class BottomDial extends View {
         Item item=current();
         return item==null ? "底部拨轮，暂无选项" : "第"+(selected+1)+"项，共"+visibleItems().size()+"项，"+item.label+(item.enabled?"，双击执行":"，暂不可用");
     }
+    public static String operationHint(Context context) {
+        return AccessibilitySupport.hasScreenReader(context)
+                ? "操作区在屏幕底部。请先用读屏聚焦拨轮，再用双指左右滑动选择，也可使用下一项、上一项无障碍操作。停下来听选项，双击屏幕确认。"
+                : "操作区在屏幕底部。用一根手指在底部左右滑动选择，咔哒声表示换了一项。停下来听选项，在底部双击确认。";
+    }
+    public String usageDescription() { return operationHint(getContext())+"当前是"+description()+"。"; }
+    public void announceUsage(String prefix) { cancelSpeech(); usagePrefix=prefix; scheduleSpeech(); }
     private void refresh() {
         selected=Math.max(0,Math.min(selected,visibleItems().size()-1));
         version++; lastTap=0; setContentDescription(description()); invalidate();
@@ -83,20 +93,20 @@ public final class BottomDial extends View {
         List<Item> choices=new ArrayList<>();
         for(int i=0;i<options.length;i++) {
             final int index=i;
-            choices.add(new Item(title+"："+options[i],()-> { closeMenu(false); onConfirm.accept(index); if(active && isShown()) feedback.speak("已选择："+options[index]); }));
+            choices.add(new Item(title+"："+options[i],()-> { closeMenu(false); onConfirm.accept(index); if(active && isShown()) announceUsage("已选择："+options[index]+"。已返回主拨轮"); }));
         }
         choices.add(new Item("取消选择，返回",()->closeMenu(true)));
-        menu=choices; selected=Math.max(0,Math.min(initial,options.length-1)); refresh(); scheduleSpeech();
+        menu=choices; selected=Math.max(0,Math.min(initial,options.length-1)); refresh(); announceUsage("请选择"+title);
     }
     public void showMenu(String[] labels,Runnable[] actions) {
         cancelSpeech(); if(menu==root) rootSelection=selected;
         menu=new ArrayList<>();
         for(int i=0;i<labels.length;i++) { final Runnable action=actions[i]; menu.add(new Item(labels[i],()->{ closeMenu(false); action.run(); })); }
-        menu.add(new Item("返回主拨轮",()->closeMenu(true))); selected=0; refresh(); scheduleSpeech();
+        menu.add(new Item("返回主拨轮",()->closeMenu(true))); selected=0; refresh(); announceUsage("已打开选项拨轮");
     }
     public boolean closeMenu(boolean speak) {
         if(menu==root) return false;
-        cancelSpeech(); menu=root; selected=rootSelection; refresh(); if(speak) scheduleSpeech(); return true;
+        cancelSpeech(); menu=root; selected=rootSelection; refresh(); if(speak) announceUsage("已返回主拨轮"); return true;
     }
     public void move(int direction) {
         if(!active) return;
@@ -110,7 +120,7 @@ public final class BottomDial extends View {
         scheduleSpeech();
     }
     private void scheduleSpeech() { handler.removeCallbacks(announce); if(active) handler.postDelayed(announce,550); }
-    public void cancelSpeech() { handler.removeCallbacks(announce); feedback.stop(); }
+    public void cancelSpeech() { handler.removeCallbacks(announce); usagePrefix=null; feedback.stop(); }
     public void setActive(boolean value) { active=value; if(!value) { cancelSpeech(); lastTap=0; } }
     @Override public boolean performClick() {
         if(!active) return false;

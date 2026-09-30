@@ -151,7 +151,7 @@ public final class SetupGuideActivity extends Activity {
                 title = "基础配置已完成"; action = "完成引导，返回应用";
                 detail = "在拨轮选择完成引导，返回应用。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。底部备用拨轮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
         }
-        spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。";
+        spoken = title + "。" + detail + " " + BottomDial.operationHint(this);
         if (keyPage!=null) spoken="请先复制密钥，再回到这里。双击屏幕任意位置粘贴。听到粘贴成功后，再双击屏幕保存。密钥内容不会被读出。要更换密钥，按系统返回键重新粘贴。";
         if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。系统开关仍需通过系统界面操作。开启读屏的快捷方式因手机设置而异。";
         heading.setText(displayTitle());
@@ -171,6 +171,7 @@ public final class SetupGuideActivity extends Activity {
         });
         button("中文语音设置", () -> openSystem(new Intent("com.android.settings.TTS_SETTINGS")));
         if (step != SetupFlow.Step.DONE) button("稍后配置，返回主界面",this::finish);
+        if (keyPage==null && dial.current()!=null) spoken+="当前选项："+dial.current().getText()+"。";
         if (keyPage!=null) {
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             keyPage.setPrompt("添加密钥。请先复制密钥，再双击屏幕粘贴。无需寻找输入框。");

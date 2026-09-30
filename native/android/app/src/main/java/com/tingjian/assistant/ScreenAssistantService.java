@@ -227,7 +227,7 @@ public final class ScreenAssistantService extends AccessibilityService {
             settings.setOverlayVisible(show);
             try { if (overlay!=null) overlay.setEnabled(show); }
             catch (RuntimeException unavailable) { report("暂时无法显示底部备用拨轮，语音服务仍可使用。",true); return; }
-            report(show ? "已开启底部备用拨轮，回到其他应用后显示。" : "已隐藏悬浮按钮，语音与屏幕读取服务继续运行。",true); return;
+            report(show ? "已开启底部备用拨轮，回到其他应用后显示。"+BottomDial.operationHint(this) : "已隐藏悬浮按钮，语音与屏幕读取服务继续运行。",true); return;
         }
         if (!settings.isConsentGranted()) latestDescription = "";
         if (command.kind == ScreenCommand.Kind.STOP) { stopFromUser("已停止。"); return; }
