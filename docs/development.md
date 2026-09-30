@@ -17,7 +17,7 @@
 | `tests/` | TypeScript 单元与 HTTP 集成测试 |
 | `demo/android/` | 带真实动态视频的独立演示播放器 |
 
-Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay` 管理悬浮面板；`MediaPauseMonitor` 监听播放，`ImageWatchMonitor` 在图片自动描述开启时扫描前台控件树寻找无文字说明的大图（解读规则、去抖、冷却和图像指纹在纯 Java 的 `ImageWatchPolicy`），`ScreenshotEncoder` 负责裁剪、压缩与指纹，`AssistantApi` 调用服务，`Narrator` 朗读。语音唤醒由 `WakeWordService` 和 `VoiceWakeController` 处理，`ScreenCommand` 把口令映射到有限的动作。
+Android 中，`ScreenAssistantService` 协调命令与截图，`AssistantOverlay` 管理悬浮面板；`MediaPauseMonitor` 监听播放，`ImageWatchMonitor` 在图片自动描述开启时扫描前台控件树寻找无文字说明的大图，包括明确标注 Live／实况照片的绘图控件（解读规则、去抖、冷却和图像指纹在纯 Java 的 `ImageWatchPolicy`），`ScreenshotEncoder` 负责裁剪、压缩与指纹，`AssistantApi` 调用服务，`Narrator` 朗读。语音唤醒由 `WakeWordService` 和 `VoiceWakeController` 处理，`ScreenCommand` 把口令映射到有限的动作。
 
 主流程：**语音命令／已开启的暂停检测／已开启的图片自动描述 → 截图（自动图片裁剪到图片区域）→ HTTP 服务 → 模型适配器 → 结果校验 → 朗读**。恢复播放、滚动、切换应用或停止命令会取消当前自动讲解；“停止监控屏幕”与“停止”关闭全部自动模式但保留语音待命。
 

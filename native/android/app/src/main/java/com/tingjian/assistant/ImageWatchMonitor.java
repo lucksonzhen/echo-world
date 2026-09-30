@@ -18,7 +18,7 @@ import java.util.ArrayDeque;
  */
 final class ImageWatchMonitor {
     interface Listener {
-        void onImageFound(String packageName, Rect bounds);
+        void onImageFound(String packageName, Rect bounds, boolean motion);
     }
 
     private final AccessibilityService service;
@@ -65,6 +65,22 @@ final class ImageWatchMonitor {
         schedule();
     }
 
+    void onNavigation(String packageName) {
+        if (!started || !target.equals(packageName)) return;
+        policy.onNavigation();
+        onScreenChanged(packageName);
+    }
+
+    void onCaptureStarted(Rect bounds, boolean motion) {
+        if (motion) policy.onMotionAttempt(bounds.flattenToString());
+    }
+
+    private static final class Candidate {
+        final Rect bounds;
+        final boolean motion;
+        Candidate(Rect bounds, boolean motion) { this.bounds = bounds; this.motion = motion; }
+    }
+
     boolean isNewImage(long hash) { return policy.isNewImage(hash); }
 
     void onDescribed(long hash) { policy.onDescribed(SystemClock.uptimeMillis(), hash); }
@@ -80,19 +96,19 @@ final class ImageWatchMonitor {
             long now = SystemClock.uptimeMillis();
             if (!policy.shouldEvaluate(now)) { if (policy.isPending()) schedule(); return; }
             policy.consume();
-            Rect found = findProminentImage();
-            if (found != null) listener.onImageFound(target, found);
+            Candidate found = findProminentImage();
+            if (found != null) listener.onImageFound(target, found.bounds, found.motion);
         }
     };
 
-    private Rect findProminentImage() {
+    private Candidate findProminentImage() {
         AccessibilityNodeInfo root;
         try { root = service.getRootInActiveWindow(); } catch (RuntimeException error) { return null; }
         if (root == null || root.getPackageName() == null || !target.contentEquals(root.getPackageName())) return null;
         DisplayMetrics metrics = service.getResources().getDisplayMetrics();
         Rect window = new Rect();
         root.getBoundsInScreen(window);
-        Rect best = null;
+        Candidate best = null;
         int visited = 0;
         ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
         ArrayDeque<Integer> depths = new ArrayDeque<>();
@@ -105,14 +121,14 @@ final class ImageWatchMonitor {
                 int depth = depths.poll();
                 visited++;
                 if (!node.isVisibleToUser()) continue;
-                if (ImageWatchPolicy.isImageClass(node.getClassName())
-                        && ImageWatchPolicy.isGenericLabel(node.getContentDescription())
-                        && ImageWatchPolicy.isGenericLabel(node.getText())) {
+                if (ImageWatchPolicy.isImageCandidate(node.getClassName(), node.getContentDescription(), node.getText())) {
+                    boolean motion = ImageWatchPolicy.isMotionLabel(node.getContentDescription()) || ImageWatchPolicy.isMotionLabel(node.getText());
                     node.getBoundsInScreen(bounds);
                     if (bounds.intersect(window)
                             && ImageWatchPolicy.isProminent(bounds.width(), bounds.height(), metrics.widthPixels, metrics.heightPixels)
-                            && (best == null || area(bounds) > area(best))) {
-                        best = new Rect(bounds);
+                            && (best == null || area(bounds) > area(best.bounds)
+                                || (area(bounds) == area(best.bounds) && motion))) {
+                        best = new Candidate(new Rect(bounds), motion);
                     }
                 }
                 if (depth >= ImageWatchPolicy.MAX_DEPTH) continue;
@@ -127,6 +143,7 @@ final class ImageWatchMonitor {
             // The window can disappear while it is being read; simply report nothing this time.
             return null;
         }
+        if (best != null && best.motion && !policy.canAttemptMotion(best.bounds.flattenToString())) return null;
         return best;
     }
 

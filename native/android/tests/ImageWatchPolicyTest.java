@@ -5,6 +5,7 @@ public final class ImageWatchPolicyTest {
 
     public static void main(String[] args) {
         imageClassesAndLabels();
+        livePhotosAndOrdinalLabels();
         prominenceThresholds();
         differenceHashAndDistance();
         settleAndCooldownTiming();
@@ -23,6 +24,37 @@ public final class ImageWatchPolicyTest {
         check(ImageWatchPolicy.isGenericLabel("图片") && ImageWatchPolicy.isGenericLabel(" Image ") && ImageWatchPolicy.isGenericLabel("照片。"), "placeholder labels are generic");
         check(!ImageWatchPolicy.isGenericLabel("一只在草地上奔跑的金毛犬"), "real alt text is kept for the screen reader");
         check(!ImageWatchPolicy.isGenericLabel("图片：海边日落"), "descriptive label with prefix is not generic");
+    }
+
+    private static void livePhotosAndOrdinalLabels() {
+        for (String label : new String[]{"LIVE", "Live Photo", "实况照片", "动图", "LIVE 2/9"}) {
+            check(ImageWatchPolicy.isMotionLabel(label), "motion type label " + label);
+            check(ImageWatchPolicy.isImageCandidate("android.view.TextureView", label, null), "explicit Live renderer " + label);
+        }
+        for (String label : new String[]{"第1张图片", "第2张", "图片 3/9", "1/9", "Photo 2"})
+            check(ImageWatchPolicy.isImageCandidate("android.widget.ImageView", label, null), "ordinal image label " + label);
+        check(ImageWatchPolicy.isImageCandidate("android.view.SurfaceView", "实况照片", null), "explicit Live surface supported");
+        check(ImageWatchPolicy.isImageCandidate("android.widget.VideoView", null, "Live"), "explicit Live video renderer supported");
+        check(ImageWatchPolicy.isImageCandidate("android.view.View", "图片 2/9", null), "semantically labelled custom picture supported");
+        check(!ImageWatchPolicy.isImageCandidate("android.view.TextureView", null, null), "unlabelled video renderer is not assumed to be a photo");
+        check(!ImageWatchPolicy.isImageCandidate("android.view.View", "1/9", null), "page counter alone does not identify a custom picture");
+        check(!ImageWatchPolicy.isImageCandidate("android.widget.TextView", "Live", null), "Live badge alone is not a picture");
+        check(!ImageWatchPolicy.isImageCandidate("android.widget.ImageButton", "Live", null), "Live toggle is not a picture");
+        check(!ImageWatchPolicy.isImageCandidate("android.view.ViewGroup", "图片", null), "large generic container not captured as a picture");
+        check(!ImageWatchPolicy.isImageCandidate("android.widget.ImageView", "图片：海边日落", null), "real description remains with screen reader");
+        check(!ImageWatchPolicy.isImageCandidate("android.widget.ImageView", "Live", "小狗奔跑"), "real second label is preserved");
+        check(!ImageWatchPolicy.isMotionLabel("Live concert at sunset"), "descriptive English label is not a Live placeholder");
+        ImageWatchPolicy policy = new ImageWatchPolicy();
+        check(policy.canAttemptMotion("first"), "first Live photo may be captured");
+        policy.onMotionAttempt("first");
+        policy.onScreenChanged(1000);
+        check(!policy.canAttemptMotion("first"), "animation content events do not retrigger Live upload");
+        policy.onMotionAttempt("second");
+        check(!policy.canAttemptMotion("first") && !policy.canAttemptMotion("second"), "multiple Live photos cannot alternate forever");
+        policy.onNavigation();
+        check(policy.canAttemptMotion("first"), "navigation allows a new Live photo in the same bounds");
+        policy.onMotionAttempt("first"); policy.reset();
+        check(policy.canAttemptMotion("first"), "disabling or changing apps resets Live suppression");
     }
 
     private static void prominenceThresholds() {

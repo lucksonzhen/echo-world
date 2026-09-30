@@ -31,6 +31,7 @@ public final class ImageWatchPolicy {
     private long describedAt = -1;
     private long lastHash;
     private boolean hasHash;
+    private final java.util.Set<String> attemptedMotionRegions = new java.util.HashSet<>();
 
     /** A content change, scroll, or window change happened in the watched app. */
     void onScreenChanged(long now) {
@@ -58,7 +59,7 @@ public final class ImageWatchPolicy {
     void onDescribed(long now, long hash) { describedAt = now; lastHash = hash; hasHash = true; }
 
     /** Forget everything, e.g. when the foreground app changes or the mode is turned off. */
-    void reset() { changedAt = -1; firstChangedAt = -1; describedAt = -1; lastHash = 0; hasHash = false; }
+    void reset() { changedAt = -1; firstChangedAt = -1; describedAt = -1; lastHash = 0; hasHash = false; attemptedMotionRegions.clear(); }
 
     /** Picture-like widgets. Icon buttons are excluded; Compose nodes without a class name cannot be detected. */
     static boolean isImageClass(CharSequence className) {
@@ -68,14 +69,45 @@ public final class ImageWatchPolicy {
         return name.contains("image") || name.contains("draweeview") || name.contains("photoview");
     }
 
-    /** Missing or placeholder alt text; a real description is left to the screen reader. */
+    /** Missing, type-only or ordinal labels do not describe what a picture contains. */
     static boolean isGenericLabel(CharSequence label) {
-        if (label == null) return true;
-        String text = label.toString().trim().toLowerCase(Locale.ROOT).replaceAll("[\\s，。,.:：]", "");
-        if (text.isEmpty()) return true;
+        String text = normalizedLabel(label);
+        if (text.isEmpty() || isMotionLabel(label)) return true;
         for (String generic : GENERIC_LABELS) if (text.equals(generic)) return true;
-        return false;
+        return text.matches("(第?[0-9]+(张|幅)(图片|照片|图像)?|第[0-9]+(张|幅)?(图片|照片|图像)|[0-9]+/[0-9]+|(图片|照片|图像|image|photo|picture)[0-9]+(/[0-9]+)?)");
     }
+
+    private static String normalizedLabel(CharSequence label) {
+        return label == null ? "" : label.toString().trim().toLowerCase(Locale.ROOT).replaceAll("[\\s，。,.:：]", "");
+    }
+
+    static boolean isMotionLabel(CharSequence label) {
+        String text = normalizedLabel(label);
+        return text.matches("(live|live图|livephoto|live照片|实况|实况图|实况照片|实况图片|动态照片|动图)([0-9]+(/[0-9]+)?)?");
+    }
+
+    /** Custom renderers require an explicit image label; an arbitrary large video/view is not a photo. */
+    static boolean isImageCandidate(CharSequence className, CharSequence description, CharSequence text) {
+        if (!isGenericLabel(description) || !isGenericLabel(text)) return false;
+        if (isImageClass(className)) return true;
+        if (className == null) return false;
+        String name = className.toString().toLowerCase(Locale.ROOT);
+        if (name.contains("button")) return false;
+        boolean renderer = name.equals("android.view.view") || name.endsWith("surfaceview")
+                || name.endsWith("textureview") || name.endsWith("videoview");
+        return renderer && (isExplicitImageLabel(description) || isExplicitImageLabel(text));
+    }
+
+    private static boolean isExplicitImageLabel(CharSequence label) {
+        String text = normalizedLabel(label);
+        if (isMotionLabel(label)) return true;
+        return isGenericLabel(label) && (text.matches(".*(图片|照片|图像|image|photo|picture).*") || text.equals("图"));
+    }
+
+    /** A Live photo is one photo, even as its pixels change. Retry only after navigating away or manually. */
+    boolean canAttemptMotion(String region) { return attemptedMotionRegions.size() < MAX_NODES && !attemptedMotionRegions.contains(region); }
+    void onMotionAttempt(String region) { attemptedMotionRegions.add(region); }
+    void onNavigation() { attemptedMotionRegions.clear(); }
 
     /** Roughly a tenth of the screen with no thin side, so thumbnails and banners are ignored. */
     static boolean isProminent(int width, int height, int screenWidth, int screenHeight) {

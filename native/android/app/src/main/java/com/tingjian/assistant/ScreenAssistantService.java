@@ -350,7 +350,7 @@ public final class ScreenAssistantService extends AccessibilityService {
         capture(session);
     }
 
-    private void describeFoundImage(String packageName, Rect bounds) {
+    private void describeFoundImage(String packageName, Rect bounds, boolean motion) {
         if (!connected || !imageWatchEnabled || !foregroundPackage.equals(packageName)
                 || !settings.isConsentGranted() || screenUnavailable()
                 || !settings.isConfigured()) return;
@@ -362,7 +362,8 @@ public final class ScreenAssistantService extends AccessibilityService {
         cancelCurrent();
         Session session = new Session(generation, false, "brief", null, packageName, false, new Rect(bounds));
         active = session;
-        setStatus("发现图片，正在自动描述。");
+        imageWatch.onCaptureStarted(bounds, motion);
+        setStatus(motion ? "发现实况图片，正在描述当前画面。" : "发现图片，正在自动描述。");
         updatePanel();
         capture(session);
     }
@@ -552,7 +553,8 @@ public final class ScreenAssistantService extends AccessibilityService {
                 cancelCurrent();
                 setStatus("页面已滚动，自动描述已取消。");
             }
-            imageWatch.onScreenChanged(packageName);
+            if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) imageWatch.onNavigation(packageName);
+            else imageWatch.onScreenChanged(packageName);
             return;
         }
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
@@ -585,7 +587,7 @@ public final class ScreenAssistantService extends AccessibilityService {
                 && !session.packageName.equals(packageName)) {
             fail(session, "前台应用已切换，已停止采集。请在想了解的页面重新发出指令。");
         }
-        if (imageWatchEnabled) imageWatch.onScreenChanged(packageName);
+        if (imageWatchEnabled) imageWatch.onNavigation(packageName);
     }
 
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
