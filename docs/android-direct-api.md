@@ -71,3 +71,22 @@ adb shell am instrument -w com.tingjian.assistant.screen.test/com.tingjian.assis
 协议依据：[Gemini API](https://ai.google.dev/api)、[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。直连口述规则位于 `native/android/app/src/main/assets/description-instructions.txt`，应与 `server/description-prompt.ts` 的 `DESCRIPTION_INSTRUCTIONS` 同步维护。
 
 1.6.0 起，本文提及的保存、测试、模型选择和设置入口均通过 [底部拨轮](android-dial.md) 选择并双击执行，应用内不再显示按钮或下拉菜单。
+
+## Android 1.6.8 返回兼容与诊断
+
+此前“模型返回格式不完整或不兼容，请选择支持图片输入的模型后重试”是本地解析器的通用错误，不能单凭这句话认定模型不支持图片。已核对 DeepSeek 官方图片请求形状；1.6.8 兼容 DeepSeek 有效概要之外的空辅助字段（省略、null、空字符串），以及 JSON 代码块的大小写、换行和 BOM。不把空回复、错误类型、拒绝或截断转换为成功，不自动重试。
+
+| 诊断码 | 含义 |
+| --- | --- |
+| R00 | API 返回外层结构不符合接口格式。 |
+| R01 | 服务返回空内容；官方 JSON 输出文档也列出过这一情况。 |
+| R02 | 回复无法解析为单个 JSON 对象。 |
+| R03 | 缺少可用概要或概要超出限制。 |
+| R04 | 描述字段类型、长度或时间轴校验失败。 |
+| R06 | 服务明确报告输出达到长度限制。 |
+| R07 | 服务未正常完成回复。 |
+| I01 | 本机准备的图片数据无效或过大。 |
+
+诊断只使用固定提示，不记录或回显截图、模型回复或密钥。遇到问题可提供接口类型、模型名称、诊断码，以及小图连接测试是否成功，不需要提交密钥或私人截图。未取得用户手机的真实返回，本次不能确认上述哪种情况是该次故障的唯一原因。
+
+参考：[DeepSeek 图像输入](https://api-docs.deepseek.com/guides/vision/)、[JSON 输出与空内容说明](https://api-docs.deepseek.com/guides/json_mode/)。

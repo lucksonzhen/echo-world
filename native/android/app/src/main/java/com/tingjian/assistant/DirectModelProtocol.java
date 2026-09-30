@@ -11,11 +11,12 @@ public final class DirectModelProtocol {
     private static final String FORMAT = "\n只输出一个 JSON 对象，不要 Markdown。所有字段必须存在："
             + "{\"title\":\"简短标题\",\"summary\":\"概要\",\"details\":[],\"visibleText\":[],"
             + "\"timeline\":[],\"uncertainties\":[],\"answer\":null}。"
-            + "数组 details、visibleText、uncertainties 只包含字符串。timeline 项为 {\"timestampMs\":整数,\"description\":\"描述\"}。";
+            + "title、summary 必须为非空字符串。没有内容的数组必须是 []，不要用 null 或空字符串。没有用户问题时 answer 必须为 null。"
+            + "数组 details、visibleText、uncertainties 只包含非空字符串。timeline 项为 {\"timestampMs\":整数,\"description\":\"描述\"}。";
 
     public static JSONObject request(String provider, String model, String instructions, List<ScreenFrame> frames,
             boolean video, String mode, String question, int durationMs) throws Exception {
-        if (frames.isEmpty() || frames.size() > 12) throw invalid();
+        if (frames.isEmpty() || frames.size() > 12) throw new IllegalStateException("准备的图片数据无效或过大，请重新描述屏幕。诊断码 I01。");
         JSONObject context = new JSONObject().put("mediaType", video ? "video" : "image").put("mode", mode)
                 .put("question", question == null ? JSONObject.NULL : question);
         if (video) context.put("durationMs", durationMs);
@@ -24,11 +25,11 @@ public final class DirectModelProtocol {
                 : new JSONObject().put("type", "text").put("text", context.toString()));
         long total = 0;
         for (ScreenFrame frame : frames) {
-            if (!frame.dataUrl.matches("data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}")) throw invalid();
+            if (!frame.dataUrl.matches("data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}")) throw new IllegalStateException("准备的图片数据无效或过大，请重新描述屏幕。诊断码 I01。");
             int comma = frame.dataUrl.indexOf(',');
             int size = frame.dataUrl.length() - comma - 1;
             total += size;
-            if (size > 2 * 1024 * 1024 * 4 / 3 + 4 || total > 8 * 1024 * 1024 * 4 / 3 + 16) throw invalid();
+            if (size > 2 * 1024 * 1024 * 4 / 3 + 4 || total > 8 * 1024 * 1024 * 4 / 3 + 16) throw new IllegalStateException("准备的图片数据无效或过大，请重新描述屏幕。诊断码 I01。");
             String stamp = "画面时间 timestampMs=" + frame.timestampMs;
             if (gemini) {
                 content.put(new JSONObject().put("text", stamp));
@@ -60,13 +61,17 @@ public final class DirectModelProtocol {
     }
 
     public static JSONObject result(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question) throws Exception {
-        if (envelope.has("error")) throw invalid();
+        try { return parseResult(provider,envelope,frames,video,question); }
+        catch(org.json.JSONException malformed) { throw envelopeError(); }
+    }
+    private static JSONObject parseResult(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question) throws Exception {
+        if (envelope.has("error")) throw envelopeError();
         String text;
         if ("gemini".equals(provider)) {
             JSONObject feedback = envelope.optJSONObject("promptFeedback");
             if (feedback != null && feedback.has("blockReason") && !"BLOCK_REASON_UNSPECIFIED".equals(feedback.optString("blockReason"))) throw refused();
             JSONArray candidates = envelope.optJSONArray("candidates");
-            if (candidates == null || candidates.length() != 1) throw invalid();
+            if (candidates == null || candidates.length() != 1) throw envelopeError();
             JSONObject candidate = candidates.getJSONObject(0);
             String finish = candidate.optString("finishReason");
             if (!"STOP".equals(finish)) throw new IllegalStateException("模型未返回完整描述，可能达到输出限制或触发内容限制。");
@@ -83,26 +88,50 @@ public final class DirectModelProtocol {
             text = all.toString();
         } else {
             JSONArray choices = envelope.optJSONArray("choices");
-            if (choices == null || choices.length() != 1) throw invalid();
+            if (choices == null || choices.length() != 1) throw envelopeError();
             JSONObject choice = choices.getJSONObject(0);
             JSONObject message = choice.getJSONObject("message");
             if (!message.isNull("refusal") && !message.optString("refusal").isEmpty()) throw refused();
-            if (!"stop".equals(choice.optString("finish_reason"))) throw new IllegalStateException("模型未返回完整描述，请检查视觉模型和输出限制。");
-            if (!(message.opt("content") instanceof String)) throw invalid();
+            String finish=choice.optString("finish_reason");
+            if ("length".equals(finish)) throw new IllegalStateException("模型回复达到输出长度限制，描述被截断。请使用简短描述重试。诊断码 R06。");
+            if ("content_filter".equals(finish)) throw refused();
+            if (!"stop".equals(finish)) throw new IllegalStateException("模型未正常完成描述，请重试。诊断码 R07。");
+            if (message.isNull("content")) throw emptyResponse();
+            if (!(message.opt("content") instanceof String)) throw envelopeError();
             text = message.getString("content");
         }
         text = text.trim();
-        if (text.startsWith("```json\n") && text.endsWith("```")) text = text.substring(8, text.length() - 3).trim();
-        else if (text.startsWith("```\n") && text.endsWith("```")) text = text.substring(4, text.length() - 3).trim();
+        if(text.startsWith("\uFEFF")) text=text.substring(1).trim();
+        if(text.isEmpty()) throw emptyResponse();
+        java.util.regex.Matcher fenced=java.util.regex.Pattern.compile("\\A```(?:json)?[ \\t]*\\r?\\n([\\s\\S]*?)\\r?\\n?```\\z",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(text);
+        if(fenced.matches()) text=fenced.group(1).trim();
         JSONObject result;
-        try { result = new JSONObject(text); } catch (Exception error) { throw invalid(); }
+        try {
+            org.json.JSONTokener parser=new org.json.JSONTokener(text);
+            Object parsed=parser.nextValue();
+            if(!(parsed instanceof JSONObject) || parser.nextClean()!=0) throw new org.json.JSONException("object required");
+            result=(JSONObject)parsed;
+        } catch (Exception error) { throw new IllegalStateException("模型回复不是可解析的描述格式，请重试。诊断码 R02。"); }
+        if("deepseek".equals(provider)) normalizeDeepSeek(result,question);
         validateResult(result, frames, video, question);
         return result;
     }
 
+    /** Only normalize absent/empty optional data; never invent a summary or accept mistyped content. */
+    private static void normalizeDeepSeek(JSONObject result,String question) throws Exception {
+        if(emptyOptional(result.opt("title"))) result.put("title","画面描述");
+        for(String name:new String[]{"details","visibleText","uncertainties","timeline"})
+            if(emptyOptional(result.opt(name))) result.put(name,new JSONArray());
+        if(question==null || question.trim().isEmpty() || emptyOptional(result.opt("answer"))) result.put("answer",JSONObject.NULL);
+    }
+    private static boolean emptyOptional(Object value) {
+        return value==null || value==JSONObject.NULL || (value instanceof String && ((String)value).trim().isEmpty());
+    }
     public static void validateResult(JSONObject result, List<ScreenFrame> frames, boolean video, String question) throws Exception {
         checkedText(result.opt("title"), 150);
-        checkedText(result.opt("summary"), 1500);
+        Object summary=result.opt("summary");
+        if(!(summary instanceof String) || ((String)summary).trim().isEmpty() || ((String)summary).length()>1500)
+            throw new IllegalStateException("模型没有返回可用的画面概要，请重试。诊断码 R03。");
         strings(result.optJSONArray("details"), 20, 1500);
         strings(result.optJSONArray("visibleText"), 30, 3000);
         strings(result.optJSONArray("uncertainties"), 20, 1500);
@@ -131,7 +160,9 @@ public final class DirectModelProtocol {
     private static void checkedText(Object value, int max) {
         if (!(value instanceof String) || ((String) value).trim().isEmpty() || ((String) value).length() > max) throw invalid();
     }
-    private static IllegalStateException invalid() { return new IllegalStateException("模型返回格式不完整或不兼容，请选择支持图片输入的模型后重试。"); }
+    private static IllegalStateException invalid() { return new IllegalStateException("模型描述的字段格式不符合要求，请重试。诊断码 R04。"); }
+    private static IllegalStateException envelopeError() { return new IllegalStateException("模型服务返回的响应结构不符合接口格式，请检查接口类型或重试。诊断码 R00。"); }
+    private static IllegalStateException emptyResponse() { return new IllegalStateException("模型服务本次返回空内容，请重新描述屏幕。诊断码 R01。"); }
     private static IllegalStateException refused() { return new IllegalStateException("模型未能描述这张画面，请换一张普通图片再试。"); }
     public static String httpError(int status) {
         return httpError(status, null);
