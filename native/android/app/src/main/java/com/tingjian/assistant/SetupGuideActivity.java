@@ -28,12 +28,14 @@ public final class SetupGuideActivity extends Activity {
     private Narrator narrator;
     private SetupFlow.Step step;
     private LinearLayout body;
-    private TextView instructions, feedback;
+    private TextView instructions, feedback, credentialStatus, keyActionHint;
+    private String pendingCredential="";
     private EditText field;
     private DialPicker choices;
     private BottomDial dial;
+    private KeyPastePage keyPage;
     private static final String[] GUIDE_PROVIDERS={"gemini","deepseek","openai","compatible","backend"};
-    private BottomDial.Item next, pause;
+    private BottomDial.Item next, pause, pasteKey;
     private String provider, address, model, spoken = "";
     private boolean resumed, busy, paused, pendingVoice, returningSystem;
     private long request;
@@ -62,14 +64,20 @@ public final class SetupGuideActivity extends Activity {
     }
 
     private void render() {
-        narrator.stop(); field = null; choices = null;
+        if (keyPage!=null) keyPage.setActive(false); keyPage=null;
+        narrator.stop(); field = null; choices = null; credentialStatus=null; keyActionHint=null; pendingCredential=""; pasteKey=null;
         screenReader=AccessibilitySupport.hasScreenReader(this);
         if(dial!=null) dial.setActive(false);
         dial=new BottomDial(this,new BottomDial.Feedback() {
             public void stop() { narrator.stop(); main.removeCallbacks(announcement); }
             public void speak(String text) { SetupGuideActivity.this.speak(text,true); }
         });
-        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
+        ScrollView scroll;
+        if (step==SetupFlow.Step.KEY && !"backend".equals(provider)) {
+            keyPage=new KeyPastePage(this,()-> { if (!resumed) return; if (pendingCredential.isEmpty()) pasteCredential(); else completeCurrent(); });
+            scroll=keyPage;
+        } else scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
         body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL); body.setPadding(dp(28),dp(24),dp(28),dp(24));
         body.setBackgroundColor(Color.rgb(248,249,246)); scroll.addView(body);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -98,17 +106,22 @@ public final class SetupGuideActivity extends Activity {
                 title = "API 基础地址";
                 boolean official = !"compatible".equals(provider) && !"backend".equals(provider);
                 detail = official ? "官方地址已经填好，无需修改。确认后点击完成本项，继续。" : "请填写你信任的服务商提供的完整 HTTPS 基础地址。不要填聊天网页地址。填完后再继续。";
-                input(title,address,false); field.setEnabled(!official); break;
+                input(title,address); field.setEnabled(!official); break;
             case MODEL:
                 title = "视觉模型名称";
                 detail = "backend".equals(provider) ? "中转模式由描述服务选择模型，这里无需填写。确认后继续。"
                         : "请确认支持图片输入的模型名称。官方接口已经预填。填完或确认后再继续。";
-                input(title,model,false); field.setEnabled(!"backend".equals(provider)); break;
+                input(title,model); field.setEnabled(!"backend".equals(provider)); break;
             case KEY:
                 title = "backend".equals(provider) ? "中转访问口令" : "API Key 密钥";
-                detail = "先在服务商页面复制密钥，回到这里，在拨轮选择粘贴密钥并双击。只在你确认粘贴时读取剪贴板，不会读出密钥。"
-                        + ("backend".equals(provider) ? "中转没有设置口令时可以留空。" : "此项不能为空。") + "也可用读屏器定位密码输入框并粘贴，完成后在拨轮选择完成本项，继续。";
-                input(title,"",true); break;
+                action="backend".equals(provider) ? "不使用口令，继续" : "保存并继续";
+                detail = "请先复制密钥，再回到这里。拨轮已停在粘贴密钥，双击即可粘贴，不用找输入框。粘贴后会提示结果，再双击保存并继续。密钥不会被读出。"
+                        + ("backend".equals(provider) ? "中转没有设置口令时，可选择不使用口令，继续。" : "");
+                credentialStatus=label("尚未粘贴密钥",22); credentialStatus.setPadding(dp(22),dp(24),dp(22),dp(24));
+                android.graphics.drawable.GradientDrawable card=new android.graphics.drawable.GradientDrawable();
+                card.setColor(Color.WHITE); card.setCornerRadius(dp(20)); card.setStroke(dp(1),Color.rgb(226,232,225)); credentialStatus.setBackground(card);
+                credentialStatus.setSaveEnabled(false);
+                pasteKey=button("粘贴密钥",this::pasteCredential); break;
             case TEST:
                 title = "测试连接"; action = "保存并测试识图连接";
                 detail = "backend".equals(provider) ? "点击测试中转连接。此步骤只检查服务状态，实际识图仍需使用时验证。"
@@ -139,13 +152,14 @@ public final class SetupGuideActivity extends Activity {
                 detail = "在拨轮选择完成引导，返回应用。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。底部备用拨轮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
         }
         spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。";
+        if (keyPage!=null) spoken="请先复制密钥，再回到这里。双击屏幕任意位置粘贴。听到粘贴成功后，再双击屏幕保存。密钥内容不会被读出。要更换密钥，按系统返回键重新粘贴。";
         if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。系统开关仍需通过系统界面操作。开启读屏的快捷方式因手机设置而异。";
         heading.setText(displayTitle());
         instructions.setText(displaySummary());
         feedback=label("",14); feedback.setTextColor(Color.rgb(100,114,105)); feedback.setMaxLines(4); feedback.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams feedbackParams=(LinearLayout.LayoutParams)feedback.getLayoutParams(); feedbackParams.topMargin=dp(20); feedback.setLayoutParams(feedbackParams);
-        if (field!=null && field.isEnabled()) button(step==SetupFlow.Step.KEY ? "粘贴密钥，不朗读内容" : "从剪贴板粘贴本项",this::pasteField);
-        next = button(action,this::completeCurrent); next.setEnabled(!busy);
+        if (field!=null && field.isEnabled()) button("从剪贴板粘贴本项",this::pasteField);
+        next = button(action,this::completeCurrent); next.setEnabled(!busy && (step!=SetupFlow.Step.KEY || "backend".equals(provider)));
         if (step == SetupFlow.Step.VOICE || step == SetupFlow.Step.PAUSE || step == SetupFlow.Step.IMAGES || step == SetupFlow.Step.BATTERY)
             button(step == SetupFlow.Step.BATTERY ? "暂不调整，继续" : "暂不开启，继续",this::skipCurrent);
         if (step!=SetupFlow.Step.PROVIDER) button("返回上一步",this::previousStep);
@@ -157,7 +171,13 @@ public final class SetupGuideActivity extends Activity {
         });
         button("中文语音设置", () -> openSystem(new Intent("com.android.settings.TTS_SETTINGS")));
         if (step != SetupFlow.Step.DONE) button("稍后配置，返回主界面",this::finish);
-        setContentView(BottomDial.page(this,scroll,dial));
+        if (keyPage!=null) {
+            body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            keyPage.setPrompt("添加密钥。请先复制密钥，再双击屏幕粘贴。无需寻找输入框。");
+            (keyActionHint=label("双击屏幕粘贴",20)).setPadding(0,dp(40),0,dp(16));
+            label("粘贴后，再双击保存。\n系统返回键可返回或重新粘贴。",14);
+            setContentView(keyPage); keyPage.requestFocus();
+        } else setContentView(BottomDial.page(this,scroll,dial));
         if (resumed) speak(spoken,false);
     }
 
@@ -175,8 +195,8 @@ public final class SetupGuideActivity extends Activity {
                 case MODEL:
                     model = DirectApiConfig.validateModel(provider,field.getText().toString()); persistDraft(); advance(); break;
                 case KEY:
-                    store.saveConnection(provider,address,model,field.getText().toString(),false);
-                    field.setText(""); advance(); break;
+                    store.saveConnection(provider,address,model,pendingCredential,false);
+                    pendingCredential=""; advance(); break;
                 case TEST:
                     busy=true; next.setEnabled(false); final long id=++request;
                     sayResult("正在测试连接，请等待。成功后会继续，失败不会跳过本项。");
@@ -241,7 +261,7 @@ public final class SetupGuideActivity extends Activity {
         if (!resumed || !hasWindowFocus()) return;
         screenReader=AccessibilitySupport.hasScreenReader(this);
         if (screenReader) {
-            narrator.stop(); instructions.announceForAccessibility(announcementText);
+            narrator.stop(); (keyPage==null ? instructions : keyPage).announceForAccessibility(announcementText);
         } else {
             narrator.speak(announcementText);
         }
@@ -252,7 +272,7 @@ public final class SetupGuideActivity extends Activity {
         try { startActivity(intent); } catch (RuntimeException error) { returningSystem=false; sayResult("系统未提供此入口，请从手机设置中查找对应项目，完成后返回。"); }
     }
     @Override protected void onResume() {
-        super.onResume(); ScreenAssistantService.setAppControlsVisible(true); resumed=true; visible=true; if(dial!=null) dial.setActive(true);
+        super.onResume(); ScreenAssistantService.setAppControlsVisible(true); resumed=true; visible=true; if(dial!=null) dial.setActive(true); if(keyPage!=null) keyPage.setActive(true);
         screenReader=AccessibilitySupport.hasScreenReader(this);
         standbyAfterGuide=standbyAfterGuide || progress.getBoolean("standby_after_guide",false);
         SetupFlow.Step restored=SetupFlow.restore(step.name(),store.isConfigured(),store.isConnectionVerified(),
@@ -262,12 +282,16 @@ public final class SetupGuideActivity extends Activity {
         boolean returned=returningSystem; returningSystem=false;
         if (step==SetupFlow.Step.ACCESSIBILITY && ScreenAssistantService.isConnected()) advance();
         else if (returned && step==SetupFlow.Step.BATTERY && getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName())) advance();
-        else speak(spoken,false);
+        else {
+            if (step==SetupFlow.Step.KEY && pasteKey!=null) dial.select(pasteKey);
+            if(keyPage!=null && !pendingCredential.isEmpty()) speak("密钥已粘贴，尚未保存。再双击屏幕即可保存。需要更换时，按系统返回键重新粘贴。",false);
+            else speak(spoken,false);
+        }
         main.post(observe);
     }
 
     @Override protected void onPause() {
-        resumed=false; visible=false; if(dial!=null) dial.setActive(false);
+        resumed=false; visible=false; if(dial!=null) dial.setActive(false); if(keyPage!=null) keyPage.setActive(false);
         main.removeCallbacksAndMessages(null); narrator.stop();
         // A response while backgrounded must not silently advance the wizard.
         if (busy && step==SetupFlow.Step.TEST) { request++; api.cancel(); busy=false; next.setEnabled(true); feedback.setText("测试已暂停，返回后可重新点击测试。"); }
@@ -293,12 +317,21 @@ public final class SetupGuideActivity extends Activity {
         TextView view=new TextView(this); view.setText(text); view.setTextSize(size); view.setTextColor(Color.rgb(27,53,45)); view.setPadding(0,dp(8),0,dp(8)); body.addView(view); return view;
     }
     private BottomDial.Item button(String text,Runnable action) { return dial.add(text,action); }
-    @Override public void onBackPressed() { if(!dial.closeMenu(true)) super.onBackPressed(); }
-    private void input(String title,String value,boolean secret) {
+    @Override public void onBackPressed() {
+        if(keyPage!=null) {
+            if(!pendingCredential.isEmpty()) {
+                pendingCredential=""; credentialStatus.setText("尚未粘贴密钥"); next.setEnabled(false);
+                keyActionHint.setText("双击屏幕粘贴");
+                keyPage.setPrompt("重新粘贴密钥。复制好后，双击屏幕粘贴。");
+                sayResult("已清除尚未保存的密钥。复制好后，双击屏幕重新粘贴。");
+            } else previousStep();
+        } else if(!dial.closeMenu(true)) super.onBackPressed();
+    }
+    private void input(String title,String value) {
         field=new EditText(this); field.setContentDescription(title); field.setHint(title); field.setTextSize(18); field.setSingleLine(true);
         field.setPadding(dp(20),dp(18),dp(20),dp(18)); field.setMinHeight(dp(76));
         android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(); surface.setColor(Color.WHITE); surface.setCornerRadius(dp(18)); surface.setStroke(dp(1),Color.rgb(220,227,219)); field.setBackground(surface);
-        field.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_URI));
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO); field.setSaveEnabled(false); field.setText(value);
         field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); } });
         body.addView(field,new LinearLayout.LayoutParams(-1,-2));
@@ -325,7 +358,7 @@ public final class SetupGuideActivity extends Activity {
             case PROVIDER: return "选择你使用的 AI 服务。\n选好后，继续下一步。";
             case ADDRESS: return "compatible".equals(provider)||"backend".equals(provider)?"填写服务商提供的 HTTPS 地址。":"官方地址已为你填好，确认即可。";
             case MODEL: return "backend".equals(provider)?"模型由中转服务选择，无需填写。":"使用支持图片输入的模型。可以保留预填名称。";
-            case KEY: return "从服务商复制密钥，再选择粘贴。\n密钥仅加密保存在本机，不会读出。";
+            case KEY: return keyPage!=null ? "先复制密钥，再双击屏幕粘贴。\n听到提示后，再双击保存。" : "先复制口令，再选择粘贴。\n不需要口令时可直接继续。";
             case TEST: return "发送一张生成的小图验证连接，不读取屏幕。可能产生一次 API 费用。";
             case CONSENT: return "描述时，屏幕画面会上传到你选择的模型服务商。视频取样不包含声音。只有同意后才启用；自动描述默认关闭。";
             case ACCESSIBILITY: return "在系统无障碍设置中开启“听见世界助手”，完成后返回。手机原有读屏可以保留。";
@@ -337,6 +370,30 @@ public final class SetupGuideActivity extends Activity {
         }
     }
 
+    private void pasteCredential() {
+        android.content.ClipboardManager clipboard=getSystemService(android.content.ClipboardManager.class);
+        CharSequence text=null;
+        try {
+            android.content.ClipData clip=clipboard==null ? null : clipboard.getPrimaryClip();
+            if (clip!=null && clip.getItemCount()==1) text=clip.getItemAt(0).getText();
+        } catch (RuntimeException unavailable) {
+            sayResult("暂时无法读取剪贴板。请重新复制密钥，回到这里双击粘贴。"); return;
+        }
+        String value=text==null ? "" : text.toString().trim();
+        if (value.isEmpty() || value.length()>4096) {
+            sayResult("剪贴板里没有可用的密钥文本。请先复制密钥，回到这里双击粘贴。"+(pendingCredential.isEmpty()?"":"此前粘贴的内容仍保留。")); return;
+        }
+        pendingCredential=value;
+        credentialStatus.setText("已粘贴密钥，等待保存");
+        pasteKey.setText("重新粘贴密钥"); next.setText("保存并继续"); next.setEnabled(true);
+        if(keyPage!=null) {
+            keyActionHint.setText("再双击屏幕保存");
+            keyPage.setPrompt("密钥已粘贴，尚未保存。双击屏幕保存密钥并继续；需要更换时，按系统返回键重新粘贴。");
+            sayResult("密钥已粘贴。再双击屏幕，即可保存并继续。需要更换时，按系统返回键重新粘贴。密钥内容不会被读出。");
+        } else {
+            dial.select(next); sayResult("口令已粘贴。再双击保存并继续。要更换口令，向右滑一项重新粘贴。");
+        }
+    }
     private void pasteField() {
         if (field==null || !field.isEnabled()) { sayResult("当前项没有可粘贴的输入框。"); return; }
         android.content.ClipboardManager clipboard=getSystemService(android.content.ClipboardManager.class);
@@ -344,7 +401,7 @@ public final class SetupGuideActivity extends Activity {
         CharSequence text=clip==null || clip.getItemCount()==0 ? null : clip.getItemAt(0).getText();
         if (text==null || text.length()==0 || text.length()>4096) { sayResult("剪贴板没有合适的纯文本，请先复制本项内容。"); return; }
         field.setText(text.toString().trim());
-        sayResult(step==SetupFlow.Step.KEY ? "已粘贴密钥，不朗读内容。确认来源正确后，在拨轮选择完成本项，继续。" : "已粘贴本项。可使用系统读屏核对，再选择完成本项，继续进行校验。");
+        sayResult("已粘贴本项。可使用系统读屏核对，再选择完成本项，继续进行校验。");
     }
     private void skipCurrent() {
         if (step==SetupFlow.Step.VOICE) { standbyAfterGuide=false; progress.edit().putBoolean("standby_after_guide",false).apply(); }

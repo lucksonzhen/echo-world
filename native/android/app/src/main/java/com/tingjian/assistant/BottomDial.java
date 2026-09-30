@@ -62,6 +62,11 @@ public final class BottomDial extends View {
         setMinimumHeight(dp(184)); setBackgroundColor(Color.rgb(248,249,246));
     }
     public Item add(String label,Runnable action) { Item item=new Item(label,action); root.add(item); refresh(); return item; }
+    /** Reposition a guided action without running it or queuing a second announcement. */
+    public void select(Item item) {
+        if (!root.contains(item) || !item.visible) return;
+        cancelSpeech(); menu=root; selected=visibleItems().indexOf(item); refresh();
+    }
     public List<Item> items() { return new ArrayList<>(root); }
     public Item current() { List<Item> list=visibleItems(); return list.isEmpty()?null:list.get(Math.min(selected,list.size()-1)); }
     private List<Item> visibleItems() { List<Item> list=new ArrayList<>(); for(Item item:menu) if(item.visible) list.add(item); return list; }

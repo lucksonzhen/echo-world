@@ -62,22 +62,57 @@ final class SetupGuideChecks {
             });
             next();
             ui(()->check(field("step")==SetupFlow.Step.ADDRESS,"provider requires explicit confirmation"));
-            next(); next();
-            ui(()->check(field("step")==SetupFlow.Step.KEY,"confirmed presets lead to credential entry"));
-            next();
-            ui(()->check(field("step")==SetupFlow.Step.KEY && ((TextView)field("feedback")).getText().length()>0,"empty credential cannot advance"));
-            ui(()->((EditText)field("field")).setText("guide-fixture-secret"));
-            SystemClock.sleep(900);
-            ui(()->check(field("step")==SetupFlow.Step.KEY && !((String)field("spoken")).contains("guide-fixture-secret"),"typing neither advances nor enters spoken guidance"));
-            ui(()->check(!((EditText)field("field")).isSaveEnabled(),"credential excluded from saved view state"));
-            ui(()->activity.finish()); open();
-            ui(()->check(field("step")==SetupFlow.Step.KEY && ((EditText)field("field")).getText().length()==0,"resume keeps confirmed progress but discards unsaved key"));
             ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
                     .setPrimaryClip(android.content.ClipData.newPlainText("fixture","guide-fixture-secret")));
-            click("粘贴密钥，不朗读内容");
-            ui(()->check("guide-fixture-secret".contentEquals(((EditText)field("field")).getText())
-                    && !((TextView)field("feedback")).getText().toString().contains("guide-fixture-secret"),"explicit dial paste fills key without speaking its value"));
-            next();
+            next(); next();
+            ui(()-> {
+                check(field("step")==SetupFlow.Step.KEY,"confirmed presets lead to credential entry");
+                check(field("field")==null && field("keyPage")!=null && !((BottomDial)field("dial")).isShown(),"credential page has no input field or dial");
+                check(((String)field("pendingCredential")).isEmpty() && !((BottomDial.Item)field("next")).isEnabled(),"entering credential step neither reads clipboard nor enables empty save");
+                runner.getTargetContext().getSystemService(android.content.ClipboardManager.class).clearPrimaryClip();
+            });
+            ui(()->((KeyPastePage)field("keyPage")).performClick());
+            ui(()->check(((String)field("pendingCredential")).isEmpty() && ((TextView)field("feedback")).getText().toString().contains("剪贴板")
+                    && ((KeyPastePage)field("keyPage")).getContentDescription().toString().contains("粘贴"),"empty clipboard explains how to retry and stays at paste"));
+            ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("fixture","   ")));
+            ui(()->((KeyPastePage)field("keyPage")).performClick());
+            ui(()->check(!((BottomDial.Item)field("next")).isEnabled(),"whitespace clipboard cannot enable credential save"));
+            ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("fixture","  guide-fixture-secret  ")));
+            ui(()->((KeyPastePage)field("keyPage")).performClick());
+            ui(()-> {
+                check("guide-fixture-secret".equals(field("pendingCredential")),"explicit paste trims clipboard credential");
+                check(((KeyPastePage)field("keyPage")).getContentDescription().toString().contains("保存") && field("step")==SetupFlow.Step.KEY && !settings.isConfigured(),"paste changes whole-page action to save without saving or advancing");
+                check(!((TextView)field("credentialStatus")).getText().toString().contains("guide-fixture-secret")
+                    && !((TextView)field("feedback")).getText().toString().contains("guide-fixture-secret")
+                    && !((String)field("announcementText")).contains("guide-fixture-secret"),"credential remains outside visible and spoken feedback");
+                check(!((TextView)field("credentialStatus")).isSaveEnabled(),"credential status does not enter saved view state");
+            });
+            ui(()-> {
+                activity.onBackPressed();
+                check(((String)field("pendingCredential")).isEmpty() && field("step")==SetupFlow.Step.KEY,"back clears unsaved key and stays in paste stage");
+                KeyPastePage page=(KeyPastePage)field("keyPage");
+                long scrollTime=SystemClock.uptimeMillis();
+                touch(page,scrollTime,android.view.MotionEvent.ACTION_DOWN,100,400);
+                touch(page,scrollTime+20,android.view.MotionEvent.ACTION_MOVE,100,200);
+                touch(page,scrollTime+40,android.view.MotionEvent.ACTION_UP,100,200);
+                check(((String)field("pendingCredential")).isEmpty(),"scrolling the key page cannot paste a credential");
+                page.setActive(false);
+                check(!page.performClick(),"background key page rejects activation"); page.setActive(true);
+                long now=scrollTime+1000;
+                touch(page,now,android.view.MotionEvent.ACTION_DOWN,100,200);
+                touch(page,now+30,android.view.MotionEvent.ACTION_UP,100,200);
+                check(((String)field("pendingCredential")).isEmpty(),"single tap cannot paste or save key");
+                touch(page,now+100,android.view.MotionEvent.ACTION_DOWN,100,200);
+                touch(page,now+130,android.view.MotionEvent.ACTION_UP,100,200);
+                check(!((String)field("pendingCredential")).isEmpty() && !settings.isConfigured() && field("step")==SetupFlow.Step.KEY,"physical double tap pastes once without saving in the same gesture");
+            });
+            ui(()->activity.finish()); open();
+            ui(()->check(field("step")==SetupFlow.Step.KEY && ((String)field("pendingCredential")).isEmpty()
+                    && ((KeyPastePage)field("keyPage")).getContentDescription().toString().contains("粘贴"),"reopened guide keeps progress and waits for explicit paste without restoring a secret"));
+            ui(()->((KeyPastePage)field("keyPage")).performClick());
+            ui(()->((KeyPastePage)field("keyPage")).performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,null));
             check(settings.isConfigured() && !settings.isConsentGranted(),"guide saves connection without granting screenshot consent");
             check(!runner.getTargetContext().getSharedPreferences("screen_assistant",0).getAll().toString().contains("guide-fixture-secret"),"guide credential stored encrypted");
             AtomicInteger calls=new AtomicInteger();
@@ -110,6 +145,10 @@ final class SetupGuideChecks {
             prefs.edit().clear().commit(); runner.getTargetContext().getSharedPreferences("screen_assistant",0).edit().clear().commit();
         }
         return passed;
+    }
+    private void touch(KeyPastePage page,long time,int action,float x,float y) {
+        android.view.MotionEvent event=android.view.MotionEvent.obtain(time,time,action,x,y,0);
+        try { page.dispatchTouchEvent(event); } finally { event.recycle(); }
     }
     private void waitForIdleRequest() {
         long end=SystemClock.uptimeMillis()+8000;
