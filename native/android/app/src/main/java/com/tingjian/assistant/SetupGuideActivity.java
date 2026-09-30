@@ -64,12 +64,13 @@ public final class SetupGuideActivity extends Activity {
     }
 
     private void render() {
+        main.removeCallbacks(readEditedValue);
         if (keyPage!=null) keyPage.setActive(false); keyPage=null;
         narrator.stop(); field = null; choices = null; credentialStatus=null; keyActionHint=null; pendingCredential=""; pasteKey=null;
         screenReader=AccessibilitySupport.hasScreenReader(this);
         if(dial!=null) dial.setActive(false);
         dial=new BottomDial(this,new BottomDial.Feedback() {
-            public void stop() { narrator.stop(); main.removeCallbacks(announcement); }
+            public void stop() { narrator.stop(); main.removeCallbacks(announcement); main.removeCallbacks(readEditedValue); }
             public void speak(String text) { SetupGuideActivity.this.speak(text,true); }
         });
         ScrollView scroll;
@@ -163,16 +164,19 @@ public final class SetupGuideActivity extends Activity {
         next=null;
         if(step!=SetupFlow.Step.PROVIDER) {
             next = button(action,this::completeCurrent); next.setEnabled(!busy && (step!=SetupFlow.Step.KEY || "backend".equals(provider)));
-            if(step==SetupFlow.Step.ADDRESS || step==SetupFlow.Step.MODEL) dial.select(next);
+            if(step==SetupFlow.Step.ADDRESS || step==SetupFlow.Step.MODEL) { next.setSpokenDetail(currentValueSpeech()); dial.select(next); }
         }
         if (step == SetupFlow.Step.VOICE || step == SetupFlow.Step.PAUSE || step == SetupFlow.Step.IMAGES || step == SetupFlow.Step.BATTERY)
             button(step == SetupFlow.Step.BATTERY ? "暂不调整，继续" : "暂不开启，继续",this::skipCurrent);
         if (step!=SetupFlow.Step.PROVIDER) button("返回上一步",this::previousStep);
-        button("重听当前步骤", () -> speak(spoken, true));
+        button("重听当前步骤", () -> {
+            if(step==SetupFlow.Step.ADDRESS || step==SetupFlow.Step.MODEL) dial.select(next);
+            speak(stepNarration(), true);
+        });
         pause = button(paused ? "继续语音引导" : "暂停语音引导", () -> {
             paused = !paused; progress.edit().putBoolean("paused",paused).apply(); narrator.stop(); main.removeCallbacks(announcement);
             pause.setText(paused ? "继续语音引导" : "暂停语音引导");
-            if (!paused) speak(spoken, false);
+            if (!paused) speak(stepNarration(), false);
         });
         button("中文语音设置", () -> openSystem(new Intent("com.android.settings.TTS_SETTINGS")));
         if (step != SetupFlow.Step.DONE) button("稍后配置，返回主界面",this::finish);
@@ -184,7 +188,7 @@ public final class SetupGuideActivity extends Activity {
             label("粘贴后，再双击保存。\n系统返回键可返回或重新粘贴。",14);
             setContentView(keyPage); keyPage.requestFocus();
         } else setContentView(BottomDial.page(this,scroll,dial));
-        if (resumed) speak(spoken,false);
+        if (resumed) speak(stepNarration(),false);
     }
 
     private void completeCurrent() {
@@ -257,6 +261,28 @@ public final class SetupGuideActivity extends Activity {
         request++; api.cancel(); busy=false;
         step=value; progress.edit().putString("step",step.name()).putBoolean("unfinished",step!=SetupFlow.Step.DONE).apply(); render();
     }
+    private String stepNarration() { return currentValueSpeech()+spoken; }
+    private String currentValueSpeech() {
+        if(field==null || (step!=SetupFlow.Step.ADDRESS && step!=SetupFlow.Step.MODEL)) return "";
+        if(step==SetupFlow.Step.MODEL && "backend".equals(provider)) return "模型由中转服务选择，本机无需填写。";
+        String name=step==SetupFlow.Step.ADDRESS ? "API 地址" : "模型名称";
+        String value=field.getText().toString().trim();
+        if(value.isEmpty()) return "当前"+name+"尚未填写。";
+        try {
+            value=step==SetupFlow.Step.ADDRESS ? DirectApiConfig.validateBaseUrl(provider,value,false) : DirectApiConfig.validateModel(provider,value);
+        } catch(IllegalArgumentException invalid) { return "当前"+name+"格式不正确，请检查后再确认。"; }
+        return "当前"+name+"是："+readIdentifier(value)+"。听清后再双击确认。";
+    }
+    private String readIdentifier(String value) {
+        return value.replace("https://","H T T P S，冒号，斜杠，斜杠，")
+                .replace(".","，点，").replace("-","，短横线，").replace("_","，下划线，")
+                .replace("/","，斜杠，").replace(":","，冒号，");
+    }
+    private final Runnable readEditedValue=()-> {
+        if(resumed && !paused && field!=null && next!=null) {
+            dial.select(next); speak(currentValueSpeech(),false);
+        }
+    };
     private void speak(String text, boolean explicit) {
         main.removeCallbacks(announcement);
         if (!resumed || (paused && !explicit)) return;
@@ -291,7 +317,7 @@ public final class SetupGuideActivity extends Activity {
         else {
             if (step==SetupFlow.Step.KEY && pasteKey!=null) dial.select(pasteKey);
             if(keyPage!=null && !pendingCredential.isEmpty()) speak("密钥已粘贴，尚未保存。再双击屏幕即可保存。需要更换时，按系统返回键重新粘贴。",false);
-            else speak(spoken,false);
+            else speak(stepNarration(),false);
         }
         main.post(observe);
     }
@@ -339,6 +365,15 @@ public final class SetupGuideActivity extends Activity {
         android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(); surface.setColor(Color.WHITE); surface.setCornerRadius(dp(18)); surface.setStroke(dp(1),Color.rgb(220,227,219)); field.setBackground(surface);
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO); field.setSaveEnabled(false); field.setText(value);
+        field.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence text,int start,int count,int after) {}
+            public void onTextChanged(CharSequence text,int start,int before,int count) {
+                narrator.stop(); main.removeCallbacks(announcement); main.removeCallbacks(readEditedValue);
+                if(next!=null) next.setSpokenDetail(currentValueSpeech());
+                if(resumed && !paused) main.postDelayed(readEditedValue,1200);
+            }
+            public void afterTextChanged(android.text.Editable text) {}
+        });
         field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); } });
         body.addView(field,new LinearLayout.LayoutParams(-1,-2));
         EditText input=field;
@@ -408,7 +443,7 @@ public final class SetupGuideActivity extends Activity {
         if (text==null || text.length()==0 || text.length()>4096) { sayResult("剪贴板没有合适的纯文本，请先复制本项内容。"); return; }
         field.setText(text.toString().trim());
         dial.select(next);
-        sayResult("已粘贴。可使用系统读屏核对，拨轮已停在"+next.getText()+"，双击后进入下一项。");
+        sayResult("已粘贴。"+currentValueSpeech()+"拨轮已停在"+next.getText()+"。");
     }
     private void skipCurrent() {
         if (step==SetupFlow.Step.VOICE) { standbyAfterGuide=false; progress.edit().putBoolean("standby_after_guide",false).apply(); }

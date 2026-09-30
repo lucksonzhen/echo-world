@@ -79,9 +79,47 @@ final class SetupGuideChecks {
                 BottomDial dial=(BottomDial)field("dial"); dial.performClick(); dial.move(-1); dial.performClick();
                 check(field("step")==SetupFlow.Step.ADDRESS && "gemini".equals(field("provider")),"changing provider on return updates presets and advances");
             });
+            click("重听当前步骤");
+            ui(()-> {
+                String text=(String)field("announcementText");
+                check(text.contains("当前API 地址是") && text.contains("generativelanguage，点，googleapis，点，com，斜杠，v1beta"),"address replay reads the actual host and path with punctuation");
+                check(((BottomDial)field("dial")).getContentDescription().toString().contains("generativelanguage"),"address confirmation accessibility label includes its value");
+                set("paused",false);
+            });
+            ui(()-> {
+                ((EditText)field("field")).setText("https://user:private-fixture@example.com/v1?key=private-fixture");
+            });
+            click("重听当前步骤");
+            ui(()-> {
+                check(((String)field("announcementText")).contains("格式不正确") && !((String)field("announcementText")).contains("private-fixture"),"malformed URL with credentials is not echoed by narration");
+                ((EditText)field("field")).setText(DirectApiConfig.defaultUrl("gemini"));
+            });
+            next();
+            ui(()-> {
+                check(field("step")==SetupFlow.Step.MODEL && ((String)field("announcementText")).contains("gemini，短横线，3，点，5，短横线，flash"),"model entry reads the actual preset before confirmation");
+                ((EditText)field("field")).setText("gemini-3.5-pro");
+                check(((BottomDial)field("dial")).getContentDescription().toString().contains("短横线，pro"),"model confirmation label immediately follows edited value");
+            });
+            SystemClock.sleep(1350);
+            ui(()->check(((String)field("announcementText")).contains("短横线，pro") && !((String)field("announcementText")).contains("短横线，flash"),"typing pause announces the latest model without stale preset"));
+            click("重听当前步骤");
+            ui(()->check(((String)field("announcementText")).contains("短横线，pro"),"replay uses edited model rather than saved draft"));
+            ui(()->check(((BottomDial)field("dial")).current()==field("next"),"replay leaves the dial ready to confirm the value just heard"));
+            ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("fixture","gemini-3.5-flash")));
+            click("从剪贴板粘贴本项");
+            ui(()-> {
+                check(((String)field("announcementText")).contains("gemini，短横线，3，点，5，短横线，flash")
+                        && field("step")==SetupFlow.Step.MODEL,"paste reads model without confirming or advancing");
+                check(((BottomDial)field("dial")).current()==field("next"),"paste returns to confirmation carrying the current value");
+                ((EditText)field("field")).setText("");
+            });
+            click("重听当前步骤");
+            ui(()->check(((String)field("announcementText")).contains("模型名称尚未填写"),"empty model is explicitly announced"));
+            ui(()-> { ((EditText)field("field")).setText("gemini-3.5-flash"); set("paused",true); });
             ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
                     .setPrimaryClip(android.content.ClipData.newPlainText("fixture","guide-fixture-secret")));
-            next(); next();
+            next();
             ui(()-> {
                 check(field("step")==SetupFlow.Step.KEY,"confirmed presets lead to credential entry");
                 check(field("field")==null && field("keyPage")!=null && !((BottomDial)field("dial")).isShown(),"credential page has no input field or dial");

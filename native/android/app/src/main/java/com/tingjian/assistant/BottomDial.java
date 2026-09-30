@@ -25,13 +25,14 @@ import java.util.List;
 public final class BottomDial extends View {
     public interface Feedback { void stop(); void speak(String text); }
     public final class Item {
-        private String label;
+        private String label, spokenDetail="";
         private final Runnable action;
         private boolean enabled=true, visible=true;
         Item(String label,Runnable action) { this.label=label; this.action=action; }
         public void setEnabled(boolean value) { if (enabled!=value) { enabled=value; refresh(); } }
         public boolean isEnabled() { return enabled; }
         public void setText(String value) { if (!label.equals(value)) { label=value; refresh(); } }
+        public void setSpokenDetail(String value) { if(!spokenDetail.equals(value)) { spokenDetail=value; refresh(); } }
         public String getText() { return label; }
         public void setVisibility(int value) { boolean next=value==VISIBLE; if (visible!=next) { visible=next; refresh(); } }
         public boolean performClick() { if (!enabled || !visible) return false; action.run(); return true; }
@@ -75,7 +76,7 @@ public final class BottomDial extends View {
     private List<Item> visibleItems() { List<Item> list=new ArrayList<>(); for(Item item:menu) if(item.visible) list.add(item); return list; }
     private String description() {
         Item item=current();
-        return item==null ? "底部拨轮，暂无选项" : "第"+(selected+1)+"项，共"+visibleItems().size()+"项，"+item.label+(item.enabled?"，双击执行":"，暂不可用");
+        return item==null ? "底部拨轮，暂无选项" : "第"+(selected+1)+"项，共"+visibleItems().size()+"项，"+item.label+(item.spokenDetail.isEmpty()?"":"。"+item.spokenDetail)+(item.enabled?"，双击执行":"，暂不可用");
     }
     public static String operationHint(Context context) {
         return AccessibilitySupport.hasScreenReader(context)
