@@ -1,5 +1,7 @@
 # 开发说明
 
+后续开发的优先级、具体任务与验收标准见 [开发路线图](roadmap.md)。当前用户操作见 [README](../README.md)，版本历史见 [更新记录](changelog.md)。
+
 ## 代码结构
 
 仓库名称为 `echo-world`，应用显示名为“听见世界”，构建项目名为 `EchoWorld`。Android 的 `com.tingjian.*` 包名、iOS bundle ID、钥匙串及配置存储键继续沿用，避免把品牌更新变成全新安装或丢失连接配置。iOS 的 Xcode 工程、target 和 scheme 已更名，需重新运行 `xcodegen generate`。
@@ -35,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File native/android/build-debug.ps1 -JavaHom
 
 已配置 Java 和 SDK 的其他平台，可先运行 `node native/android/prepare-voice-model.mjs`（可加 `--small`），再进入 `native/android` 运行 `./gradlew :app:assembleDebug`。iPhone 构建见 [iOS 说明](../native/ios/README.md)。
 
-大模型对真人口音、噪声和远场麦克风的识别明显更好，代价是 APK 体积增大、首次解压需要约 2 GiB 存储、识别时内存占用明显更高。手机上切换模型版本后，首次开启语音待命会重新解压并清理旧模型。
+Vosk 大语音模型会增大 APK 体积，首次解压需要约 2 GiB 存储；真人口音、噪声和远场场景的收益与实际内存占用仍需和小模型做真机对照。当前 1.6.11 试用 APK 使用小语音模型，Vosk 两种规格都不负责图像理解。手机上切换模型版本后，首次开启语音待命会重新解压并清理旧模型。
 
 安装：`adb install -r native/android/app/build/outputs/apk/debug/app-debug.apk`。测试暂停讲解可使用[动态视频演示](../demo/android/README.md)。
 
