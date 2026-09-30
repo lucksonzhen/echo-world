@@ -4,6 +4,8 @@
 
 项目仓库：[lucksonzhen/echo-world](https://github.com/lucksonzhen/echo-world)，原名 blind-assistant。当前保留版本为 **Android 1.6.11 试用版**；本文按该版本说明。开发计划不代表现有功能。
 
+**许可：仅限非商业用途，禁止商业使用。** 项目原创内容采用 [EchoWorld 非商业使用许可证](LICENSE)，第三方组件保留原许可。
+
 ## 下载与准备
 
 - [下载 Android 1.6.11 APK](https://github.com/lucksonzhen/echo-world/releases/download/v1.6.11-preview.1/echo-world-1.6.11-android-dial.apk) · [版本归档与校验文件](https://github.com/lucksonzhen/echo-world/releases/tag/v1.6.11-preview.1)
@@ -126,6 +128,14 @@ API Key 使用 Android Keystore 加密保存，不内置公共密钥。手机直
 | P2 | 视频连续理解、缓存与用量控制、可选历史、iOS 验证、多语言 | 分项完成可复现验收，再进入用户试用 |
 
 优先把“能独立配置、能知道为何失败、能随时停止”做稳定；本地视觉推理先交付单张图离线原型，再决定是否扩展视频与自动模式。当前没有承诺具体模型、支持机型或完成日期。
+
+## 使用许可
+
+本项目原创代码、文档和随许可提供的编译产物适用自定义 [EchoWorld 非商业使用许可证 1.0](LICENSE)。允许遵守条款的非商业使用、学习、修改和分享；禁止出售、收费服务、广告变现、商业产品集成和企业生产经营用途，免费提供也不当然等于非商业使用。分发原版或修改版须附带许可及版权声明，标注非商业限制，修改版须说明修改。
+
+这是限制商业使用的源码可用许可，不宣称是 OSI 认可的开源许可证。个人非商业使用时向模型服务商支付正常 API 费用，本身不构成对本软件的商业使用。具体范围以 LICENSE 正文为准。
+
+第三方库、Vosk 模型和演示素材保留各自许可证，本项目许可不限制用户依据这些第三方许可证单独享有的权利。详见 [Android 第三方声明](native/android/THIRD_PARTY_NOTICES.md) 和 [演示素材许可](demo/android/ASSET_LICENSE.md)。
 
 ## 当前验证与其他平台
 

@@ -56,3 +56,11 @@ TypeScript 测试覆盖模型请求、格式校验、鉴权、限流、超时和
 修改界面后重新构建 Android，并在模拟器检查展开／收起、截图时隐藏面板、暂停讲解及恢复播放取消。真机验收见[验收清单](acceptance.md)。
 
 `.env`、密钥、构建产物和本地 `artifacts/` 不提交。服务配置见[服务端说明](../server/README.md)；备用原型的使用方式见 [Expo 说明](media-prototype.md)。
+
+## 许可与分发
+
+项目原创内容按根目录 [LICENSE](../LICENSE) 仅许可非商业用途。第三方材料遵守原许可，不得把第三方原许可改成项目许可。贡献内容须有权按本项目许可提供；已有独立声明的材料需单独核对。
+
+Android 源码中的 `app/src/main/assets/licenses/ECHOWORLD-NONCOMMERCIAL.txt` 是根许可证的完整副本，后续构建会将其放入 APK；更改根许可证时须同步该副本。其他平台分发及发布页也应附带 LICENSE、版权和适用的第三方声明，并醒目标注“仅限非商业用途，禁止商业使用”。现有 v1.6.11-preview.1 标签与 APK 保留原样，本次不重打包或替换历史附件。
+
+`package.json` 和锁文件根包使用 `SEE LICENSE IN LICENSE` 指向自定义条款，依赖自身的 license 字段保持原样。此写法参见 [npm package.json 许可字段文档](https://github.com/npm/cli/blob/latest/docs/lib/content/configuring-npm/package-json.md#license)。
