@@ -54,14 +54,31 @@ final class SetupGuideChecks {
                 BottomDial dial=(BottomDial)field("dial");
                 check(dial.items().stream().noneMatch(item->item.getText().contains("语音操作") || item.getText().contains("语音说一项")),"setup has no microphone command entry");
                 check(!((String)field("spoken")).contains("小助手") && ((String)field("spoken")).contains("双击") && ((String)field("spoken")).contains("屏幕底部") && ((String)field("spoken")).contains("当前选项"),"setup narration explains dial actions instead of spoken commands");
+                check(field("next")==null && dial.items().stream().noneMatch(item->item.getText().contains("完成本项")),"provider has no duplicate continue action");
                 dial.performClick(); dial.move(1);
-                check(((DialPicker)field("choices")).getSelectedItemPosition()==0,"browsing provider menu preserves confirmed value");
-                dial.performClick();
-                check(((DialPicker)field("choices")).getSelectedItemPosition()==1,"dial activation selects DeepSeek");
-                dial.performClick(); dial.move(-1); dial.performClick();
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==0 && field("step")==SetupFlow.Step.PROVIDER,"browsing provider menu preserves confirmed value without advancing");
+                dial.closeMenu(true);
+                check(field("step")==SetupFlow.Step.PROVIDER && "gemini".equals(field("provider")),"cancelling provider choice does not advance or change draft");
+                dial.performClick(); dial.move(1); dial.performClick();
+                check(field("step")==SetupFlow.Step.ADDRESS && "deepseek".equals(field("provider"))
+                        && "deepseek".equals(prefs.getString("provider","")),"confirming provider commits draft and immediately advances one step");
+                check(!dial.performClick() && field("step")==SetupFlow.Step.ADDRESS,"old dial cannot trigger another step after confirmation");
+                check(((BottomDial)field("dial")).current().getText().equals("确认地址"),"address starts on its single confirmation action");
             });
-            next();
-            ui(()->check(field("step")==SetupFlow.Step.ADDRESS,"provider requires explicit confirmation"));
+            click("返回上一步");
+            ui(()-> {
+                BottomDial dial=(BottomDial)field("dial");
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==1,"returning preserves confirmed provider selection");
+                dial.performClick(); dial.performClick();
+                check(field("step")==SetupFlow.Step.ADDRESS,"confirming unchanged provider still advances exactly once");
+            });
+            ui(activity::finish); open();
+            ui(()->check(field("step")==SetupFlow.Step.ADDRESS && "deepseek".equals(field("provider")),"reopening resumes after the confirmed provider"));
+            click("返回上一步");
+            ui(()-> {
+                BottomDial dial=(BottomDial)field("dial"); dial.performClick(); dial.move(-1); dial.performClick();
+                check(field("step")==SetupFlow.Step.ADDRESS && "gemini".equals(field("provider")),"changing provider on return updates presets and advances");
+            });
             ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
                     .setPrimaryClip(android.content.ClipData.newPlainText("fixture","guide-fixture-secret")));
             next(); next();

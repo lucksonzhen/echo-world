@@ -94,23 +94,24 @@ public final class SetupGuideActivity extends Activity {
         TextView heading=label("",30); heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0)); heading.setAccessibilityHeading(true);
         instructions=label("",16); instructions.setTextColor(Color.rgb(85,105,95)); instructions.setLineSpacing(dp(5),1f);
         LinearLayout.LayoutParams noteParams=(LinearLayout.LayoutParams)instructions.getLayoutParams(); noteParams.bottomMargin=dp(28); instructions.setLayoutParams(noteParams);
-        String title, detail, action = "完成本项，继续";
+        String title, detail, action = "确认";
         switch (step) {
             case PROVIDER:
-                title = "模型接口配置"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。双击模型接口配置，左右滑动选择服务商，再双击确认。选好后选择完成本项，继续。默认选择 Gemini。";
+                title = "模型接口配置"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。双击模型接口配置，左右滑动选择服务商，再双击确认。确认后直接进入下一项设置，无需再选择继续。";
                 choices = new DialPicker(dial,selectionCard(),title,
                         new String[]{"Gemini 官方 API", "DeepSeek 官方 API", "OpenAI 官方 API", "自定义 OpenAI 兼容接口", "原有中转服务"});
                 for (int i=0;i<GUIDE_PROVIDERS.length;i++) if (provider.equals(GUIDE_PROVIDERS[i])) choices.setSelection(i);
+                choices.onConfirmed(this::completeCurrent);
                 break;
             case ADDRESS:
-                title = "API 基础地址";
+                title = "API 基础地址"; action="确认地址";
                 boolean official = !"compatible".equals(provider) && !"backend".equals(provider);
-                detail = official ? "官方地址已经填好，无需修改。确认后点击完成本项，继续。" : "请填写你信任的服务商提供的完整 HTTPS 基础地址。不要填聊天网页地址。填完后再继续。";
+                detail = official ? "官方地址已经填好，无需修改。双击确认地址，进入下一项。" : "请填写你信任的服务商提供的完整 HTTPS 基础地址。不要填聊天网页地址。填好后选择确认地址并双击，进入下一项。";
                 input(title,address); field.setEnabled(!official); break;
             case MODEL:
-                title = "视觉模型名称";
-                detail = "backend".equals(provider) ? "中转模式由描述服务选择模型，这里无需填写。确认后继续。"
-                        : "请确认支持图片输入的模型名称。官方接口已经预填。填完或确认后再继续。";
+                title = "视觉模型名称"; action="确认模型";
+                detail = "backend".equals(provider) ? "中转模式由描述服务选择模型，这里无需填写。双击确认模型，进入下一项。"
+                        : "请确认支持图片输入的模型名称。官方接口已经预填。核对后双击确认模型，进入下一项。";
                 input(title,model); field.setEnabled(!"backend".equals(provider)); break;
             case KEY:
                 title = "backend".equals(provider) ? "中转访问口令" : "API Key 密钥";
@@ -159,7 +160,11 @@ public final class SetupGuideActivity extends Activity {
         feedback=label("",14); feedback.setTextColor(Color.rgb(100,114,105)); feedback.setMaxLines(4); feedback.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams feedbackParams=(LinearLayout.LayoutParams)feedback.getLayoutParams(); feedbackParams.topMargin=dp(20); feedback.setLayoutParams(feedbackParams);
         if (field!=null && field.isEnabled()) button("从剪贴板粘贴本项",this::pasteField);
-        next = button(action,this::completeCurrent); next.setEnabled(!busy && (step!=SetupFlow.Step.KEY || "backend".equals(provider)));
+        next=null;
+        if(step!=SetupFlow.Step.PROVIDER) {
+            next = button(action,this::completeCurrent); next.setEnabled(!busy && (step!=SetupFlow.Step.KEY || "backend".equals(provider)));
+            if(step==SetupFlow.Step.ADDRESS || step==SetupFlow.Step.MODEL) dial.select(next);
+        }
         if (step == SetupFlow.Step.VOICE || step == SetupFlow.Step.PAUSE || step == SetupFlow.Step.IMAGES || step == SetupFlow.Step.BATTERY)
             button(step == SetupFlow.Step.BATTERY ? "暂不调整，继续" : "暂不开启，继续",this::skipCurrent);
         if (step!=SetupFlow.Step.PROVIDER) button("返回上一步",this::previousStep);
@@ -356,7 +361,7 @@ public final class SetupGuideActivity extends Activity {
     }
     private String displaySummary() {
         switch(step) {
-            case PROVIDER: return "选择你使用的 AI 服务。\n选好后，继续下一步。";
+            case PROVIDER: return "选择你使用的 AI 服务。\n双击确认后，直接进入下一项。";
             case ADDRESS: return "compatible".equals(provider)||"backend".equals(provider)?"填写服务商提供的 HTTPS 地址。":"官方地址已为你填好，确认即可。";
             case MODEL: return "backend".equals(provider)?"模型由中转服务选择，无需填写。":"使用支持图片输入的模型。可以保留预填名称。";
             case KEY: return keyPage!=null ? "先复制密钥，再双击屏幕粘贴。\n听到提示后，再双击保存。" : "先复制口令，再选择粘贴。\n不需要口令时可直接继续。";
@@ -402,7 +407,8 @@ public final class SetupGuideActivity extends Activity {
         CharSequence text=clip==null || clip.getItemCount()==0 ? null : clip.getItemAt(0).getText();
         if (text==null || text.length()==0 || text.length()>4096) { sayResult("剪贴板没有合适的纯文本，请先复制本项内容。"); return; }
         field.setText(text.toString().trim());
-        sayResult("已粘贴本项。可使用系统读屏核对，再选择完成本项，继续进行校验。");
+        dial.select(next);
+        sayResult("已粘贴。可使用系统读屏核对，拨轮已停在"+next.getText()+"，双击后进入下一项。");
     }
     private void skipCurrent() {
         if (step==SetupFlow.Step.VOICE) { standbyAfterGuide=false; progress.edit().putBoolean("standby_after_guide",false).apply(); }

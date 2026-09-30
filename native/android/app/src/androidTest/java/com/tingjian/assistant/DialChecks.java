@@ -43,10 +43,12 @@ final class DialChecks {
                 dial.performClick(); dial.move(1);
                 check(dial.current().getText().contains("DeepSeek"),"provider submenu scrolls to DeepSeek");
                 check(selectedProvider(activity).contains("Gemini"),"scrolling provider choices does not commit selection");
-                dial.performClick();
-                check(selectedProvider(activity).contains("DeepSeek"),"explicit wheel activation commits the provider");
-                dial.performClick(); dial.move(-1); dial.closeMenu(false);
-                check(selectedProvider(activity).contains("DeepSeek"),"cancelling a menu preserves the confirmed provider");
+                dial.closeMenu(false);
+                check(selectedProvider(activity).contains("Gemini"),"cancelling a menu preserves the confirmed provider");
+                dial.performClick(); dial.move(1); dial.performClick();
+                check(find(activity.getWindow().getDecorView())!=dial
+                        && find(activity.getWindow().getDecorView()).current().getText().equals("确认地址")
+                        && activity.getSharedPreferences("setup_guide",0).getString("provider","").equals("deepseek"),"explicit wheel confirmation commits provider and opens the next setting");
             });
             for(SetupFlow.Step preview:new SetupFlow.Step[]{SetupFlow.Step.KEY,SetupFlow.Step.CONSENT}) {
                 ui(()-> {
