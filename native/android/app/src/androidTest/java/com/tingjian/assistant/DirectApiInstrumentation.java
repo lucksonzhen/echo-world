@@ -115,7 +115,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
         rejectsWithCode(envelope("deepseek",new JSONObject()),"R03","normalization never invents a missing summary");
         rejectsWithCode(envelope("deepseek",description().put("summary","")),"R03","empty summary remains an error");
         rejectsWithCode(envelope("deepseek",description().put("details",new JSONArray().put(42))),"R04","DeepSeek non text detail entries remain rejected");
-        rejectsWithCode(envelope("deepseek",description().put("visibleText","not an array")),"R04","DeepSeek nonempty mistyped optional field remains rejected");
+        rejectsWithCode(envelope("deepseek",description().put("visibleText",true)),"R04","DeepSeek nonempty mistyped optional field remains rejected");
         rejectsWithCode(envelope("deepseek",description().put("timeline",new JSONArray().put(new JSONObject().put("timestampMs",0).put("description","帧")))),"R04","DeepSeek image response cannot carry a video timeline");
         rejectsWithCode(new JSONObject().put("choices",new JSONArray().put(new JSONObject())),"R00","malformed envelope is distinguished from network failure");
         JSONObject refusal=contentEnvelope(description().toString(),"stop"); refusal.getJSONArray("choices").getJSONObject(0).getJSONObject("message").put("refusal","refused");
@@ -161,6 +161,60 @@ public final class DirectApiInstrumentation extends Instrumentation {
             Reply screen=new Reply(); client.describe(frames,false,"brief",null,0,screen); screen.await();
             check(test.error==null && screen.error==null && screen.success.contains(prose) && calls.get()==2,"small test JSON followed by screen prose succeeds without extra requests");
         } finally { client.close(); }
+    }
+    private void rejectsField(JSONObject result,String field,String reason,String name) throws Exception {
+        try { DirectModelProtocol.result("deepseek",envelope("deepseek",result),frames,false,null,"detailed"); }
+        catch(IllegalStateException expected) {
+            String message=expected.getMessage();
+            check(message.contains("R04") && message.contains(field) && message.contains(reason)
+                    && !message.contains(KEY),name); return;
+        }
+        throw new AssertionError(name);
+    }
+    private void deepseekFieldResponses(SettingsStore settings) throws Exception {
+        JSONObject mixed=description().put("details",new JSONArray().put(JSONObject.NULL).put(" ")
+                .put(new JSONObject().put("description","顶部有搜索框")))
+                .put("visibleText",new JSONArray().put(new JSONObject().put("text"," 搜索 ")).put("").put("返回"))
+                .put("uncertainties","小字可能看不清");
+        JSONObject parsed=DirectModelProtocol.result("deepseek",envelope("deepseek",mixed),frames,false,null,"detailed");
+        check(parsed.getJSONArray("details").length()==1 && parsed.getJSONArray("details").getString(0).equals("顶部有搜索框"),"empty list items and exact description wrappers normalize without losing text");
+        check(parsed.getJSONArray("visibleText").getString(0).equals(" 搜索 ") && parsed.getJSONArray("visibleText").getString(1).equals("返回"),"OCR text wrappers preserve whitespace and order");
+        check(parsed.getJSONArray("uncertainties").getString(0).equals("小字可能看不清"),"single uncertainty string remains in narration");
+        JSONObject single=description().put("visibleText","第一行\n第二行");
+        check(DirectModelProtocol.result("deepseek",envelope("deepseek",single),frames,false,null,"text").getJSONArray("visibleText").getString(0).equals("第一行\n第二行"),"single OCR string is preserved in text mode");
+        JSONArray lines=new JSONArray(); java.util.List<String> original=new java.util.ArrayList<>();
+        for(int i=0;i<65;i++) { String line="第"+i+"行："+String.join("",Collections.nCopies(100,"字")); lines.put(line); original.add(line); }
+        JSONObject crowded=description().put("visibleText",lines);
+        JSONArray packed=DirectModelProtocol.result("deepseek",envelope("deepseek",crowded),frames,false,null,"detailed").getJSONArray("visibleText");
+        java.util.List<String> chunks=new java.util.ArrayList<>(); boolean bounded=packed.length()<=30;
+        for(int i=0;i<packed.length();i++) { chunks.add(packed.getString(i)); bounded &= packed.getString(i).length()<=3000; }
+        check(bounded && String.join("\n",chunks).equals(String.join("\n",original)),"65 OCR lines regroup within bounds with every character and order preserved");
+        JSONArray excessive=new JSONArray();
+        for(int i=0;i<31;i++) excessive.put(String.join("",Collections.nCopies(3000,"字")));
+        rejectsField(description().put("visibleText",excessive),"识别文字","总量","excessive OCR fails explicitly without truncation");
+        rejectsField(description().put("details",new JSONArray().put(new JSONObject().put("text",KEY).put("confidence",0.2))),"画面细节","对象","ambiguous object is rejected without leaking its text or dropping confidence");
+        rejectsField(description().put("details",new JSONArray().put(42)),"画面细节第1项","数字","numeric detail has safe field and type diagnosis");
+        rejectsField(description().put("title",new JSONObject().put("private",KEY)),"标题","对象","title type diagnosis redacts response contents");
+        rejectsField(description().put("uncertainties",new JSONArray().put(new JSONArray().put(KEY))),"不确定性说明第1项","列表","nested uncertainty arrays are rejected without leaking contents");
+        rejectsField(description().put("visibleText",String.join("",Collections.nCopies(3001,"字"))),"识别文字第1项","3000","overlong individual OCR text is not silently clipped");
+        rejectsField(description().put("timeline",new JSONArray().put(new JSONObject().put("timestampMs",0).put("description",KEY))),"时间轴","单张屏幕","unexpected image timeline gets a specific redacted diagnosis");
+        rejectsField(description().put("timeline",KEY),"时间轴","文字","mistyped timeline gets correct type diagnosis without raw value");
+        rejects(()->DirectModelProtocol.result("openai",envelope("openai",mixed),frames,false,null),"DeepSeek field normalization does not weaken other providers");
+        save(settings,"deepseek",true);
+        AtomicInteger calls=new AtomicInteger();
+        AssistantApi client=new AssistantApi(getTargetContext(),url->{ int n=calls.incrementAndGet(); return new FakeConnection(url,200,envelope("deepseek",n==1?description():mixed).toString()); });
+        try {
+            Reply test=new Reply(); client.check(test); test.await();
+            Reply screen=new Reply(); client.describe(frames,false,"detailed",null,0,screen); screen.await();
+            check(test.error==null && screen.error==null && screen.success.contains("顶部有搜索框")
+                    && screen.success.contains("搜索") && screen.success.contains("返回") && screen.success.contains("小字可能看不清")
+                    && calls.get()==2,"small test then detailed screen with mixed fields narrates all content without extra requests");
+        } finally { client.close(); }
+        AssistantApi failure=new AssistantApi(getTargetContext(),url->new FakeConnection(url,200,envelope("deepseek",description().put("title",new JSONObject().put("secret",KEY))).toString()));
+        try {
+            Reply screen=new Reply(); failure.describe(frames,false,"detailed",null,0,screen); screen.await();
+            check(screen.success==null && screen.error.contains("标题") && screen.error.contains("R04") && !screen.error.contains(KEY),"field diagnosis reaches spoken client error without private response contents");
+        } finally { failure.close(); }
     }
     private void run() {
         Bundle summary = new Bundle();
@@ -219,6 +273,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
             }
             deepseekCompatibility(settings);
             deepseekTextResponses(settings);
+            deepseekFieldResponses(settings);
             JSONObject truncated = envelope("gemini", description()); truncated.getJSONArray("candidates").getJSONObject(0).put("finishReason", "MAX_TOKENS");
             rejects(() -> DirectModelProtocol.result("gemini", truncated, frames, false, null), "truncated Gemini answer rejected");
             JSONObject refused = envelope("openai", description()); refused.getJSONArray("choices").getJSONObject(0).getJSONObject("message").put("refusal", "not allowed");

@@ -12,7 +12,7 @@ public final class DirectModelProtocol {
             + "{\"title\":\"简短标题\",\"summary\":\"概要\",\"details\":[],\"visibleText\":[],"
             + "\"timeline\":[],\"uncertainties\":[],\"answer\":null}。"
             + "title、summary 必须为非空字符串。没有内容的数组必须是 []，不要用 null 或空字符串。没有用户问题时 answer 必须为 null。"
-            + "数组 details、visibleText、uncertainties 只包含非空字符串。timeline 项为 {\"timestampMs\":整数,\"description\":\"描述\"}。";
+            + "数组 details、visibleText、uncertainties 只包含非空字符串。title 最多150字符，summary 最多1500字符；details、uncertainties 最多20项且每项最多1500字符；visibleText 最多30项且每项最多3000字符；answer 最多3000字符。单张图片 timeline 必须为空数组；视频 timeline 最多12项，描述最多1500字符。timeline 项为 {\"timestampMs\":整数,\"description\":\"描述\"}。";
 
     public static JSONObject request(String provider, String model, String instructions, List<ScreenFrame> frames,
             boolean video, String mode, String question, int durationMs) throws Exception {
@@ -160,48 +160,100 @@ public final class DirectModelProtocol {
     private static IllegalStateException formatError(String code,String reason) {
         return new IllegalStateException(reason+"。请重试。诊断码 "+code+"。");
     }
-    /** Only normalize absent/empty optional data; never invent a summary or accept mistyped content. */
+    /** Normalize only representations that preserve all supplied text, order and uncertainty. */
     private static void normalizeDeepSeek(JSONObject result,String question) throws Exception {
         if(emptyOptional(result.opt("title"))) result.put("title","画面描述");
-        for(String name:new String[]{"details","visibleText","uncertainties","timeline"})
-            if(emptyOptional(result.opt(name))) result.put(name,new JSONArray());
+        result.put("details",textList(result.opt("details"),"画面细节",20,1500));
+        result.put("visibleText",textList(result.opt("visibleText"),"识别文字",30,3000));
+        result.put("uncertainties",textList(result.opt("uncertainties"),"不确定性说明",20,1500));
+        if(emptyOptional(result.opt("timeline"))) result.put("timeline",new JSONArray());
         if(question==null || question.trim().isEmpty() || emptyOptional(result.opt("answer"))) result.put("answer",JSONObject.NULL);
+    }
+    private static JSONArray textList(Object value,String field,int count,int max) throws Exception {
+        JSONArray values=value instanceof JSONArray ? (JSONArray)value : new JSONArray().put(value==null?JSONObject.NULL:value);
+        java.util.List<String> texts=new java.util.ArrayList<>();
+        for(int i=0;i<values.length();i++) {
+            Object item=values.opt(i);
+            if(emptyOptional(item)) continue;
+            if(item instanceof JSONObject) {
+                JSONObject object=(JSONObject)item;
+                if(object.length()!=1 || (!object.has("text") && !object.has("description")))
+                    throw fieldError(field,"第"+(i+1)+"项是无法无损转换的对象");
+                item=object.opt(object.has("text")?"text":"description");
+                if(emptyOptional(item)) continue;
+            }
+            checkedText(item,max,field+"第"+(i+1)+"项");
+            texts.add((String)item);
+        }
+        JSONArray normalized=new JSONArray();
+        if(texts.size()<=count) { for(String text:texts) normalized.put(text); return normalized; }
+        // Many short OCR lines can exceed the item limit. Join adjacent lines without dropping or reordering any text.
+        StringBuilder group=new StringBuilder();
+        for(String text:texts) {
+            if(group.length()>0 && group.length()+1+text.length()>max) { normalized.put(group.toString()); group.setLength(0); }
+            if(group.length()>0) group.append('\n');
+            group.append(text);
+        }
+        if(group.length()>0) normalized.put(group.toString());
+        if(normalized.length()>count) throw fieldError(field,"内容总量超出可朗读限制，未截掉任何内容");
+        return normalized;
     }
     private static boolean emptyOptional(Object value) {
         return value==null || value==JSONObject.NULL || (value instanceof String && ((String)value).trim().isEmpty());
     }
     public static void validateResult(JSONObject result, List<ScreenFrame> frames, boolean video, String question) throws Exception {
-        checkedText(result.opt("title"), 150);
+        checkedText(result.opt("title"),150,"标题");
         Object summary=result.opt("summary");
         if(!(summary instanceof String) || ((String)summary).trim().isEmpty() || ((String)summary).length()>1500)
             throw new IllegalStateException("模型没有返回可用的画面概要，请重试。诊断码 R03。");
-        strings(result.optJSONArray("details"), 20, 1500);
-        strings(result.optJSONArray("visibleText"), 30, 3000);
-        strings(result.optJSONArray("uncertainties"), 20, 1500);
-        if (!result.has("answer")) throw invalid();
-        if (!result.isNull("answer")) checkedText(result.opt("answer"), 3000);
-        if (question == null || question.trim().isEmpty()) result.put("answer", JSONObject.NULL);
-        JSONArray timeline = result.optJSONArray("timeline");
-        if (timeline == null || timeline.length() > 12 || (!video && timeline.length() > 0)) throw invalid();
-        Set<Integer> stamps = new HashSet<>();
-        for (ScreenFrame frame : frames) stamps.add(frame.timestampMs);
-        int previous = -1;
-        for (int i = 0; i < timeline.length(); i++) {
-            JSONObject entry = timeline.getJSONObject(i);
-            Object stamp = entry.opt("timestampMs");
-            if (!(stamp instanceof Number) || ((Number) stamp).doubleValue() != ((Number) stamp).intValue()) throw invalid();
-            int value = ((Number) stamp).intValue();
-            if (value <= previous || !stamps.contains(value)) throw invalid();
-            previous = value;
-            checkedText(entry.opt("description"), 1500);
+        strings(result.opt("details"),20,1500,"画面细节");
+        strings(result.opt("visibleText"),30,3000,"识别文字");
+        strings(result.opt("uncertainties"),20,1500,"不确定性说明");
+        if(!result.has("answer")) throw fieldError("问题回答","字段缺失");
+        if(!result.isNull("answer")) checkedText(result.opt("answer"),3000,"问题回答");
+        if(question==null || question.trim().isEmpty()) result.put("answer",JSONObject.NULL);
+        Object rawTimeline=result.opt("timeline");
+        if(!(rawTimeline instanceof JSONArray)) throw fieldError("时间轴","需要列表，收到"+kind(rawTimeline));
+        JSONArray timeline=(JSONArray)rawTimeline;
+        if(timeline.length()>12) throw fieldError("时间轴","条目超过十二项");
+        if(!video && timeline.length()>0) throw fieldError("时间轴","单张屏幕回复包含了视频时间轴");
+        Set<Integer> stamps=new HashSet<>();
+        for(ScreenFrame frame:frames) stamps.add(frame.timestampMs);
+        int previous=-1;
+        for(int i=0;i<timeline.length();i++) {
+            JSONObject entry=timeline.optJSONObject(i);
+            if(entry==null) throw fieldError("时间轴","第"+(i+1)+"项不是对象");
+            Object stamp=entry.opt("timestampMs");
+            if(!(stamp instanceof Number) || ((Number)stamp).doubleValue()!=((Number)stamp).intValue())
+                throw fieldError("时间轴","第"+(i+1)+"项的时间不是整数");
+            int value=((Number)stamp).intValue();
+            if(value<=previous || !stamps.contains(value)) throw fieldError("时间轴","采样时刻不存在、重复或顺序不对");
+            previous=value;
+            checkedText(entry.opt("description"),1500,"时间轴第"+(i+1)+"项描述");
         }
     }
-    private static void strings(JSONArray array, int count, int length) {
-        if (array == null || array.length() > count) throw invalid();
-        for (int i = 0; i < array.length(); i++) checkedText(array.opt(i), length);
+    private static void strings(Object value,int count,int length,String field) {
+        if(!(value instanceof JSONArray)) throw fieldError(field,"需要列表，收到"+kind(value));
+        JSONArray array=(JSONArray)value;
+        if(array.length()>count) throw fieldError(field,"条目超过"+count+"项");
+        for(int i=0;i<array.length();i++) checkedText(array.opt(i),length,field+"第"+(i+1)+"项");
     }
-    private static void checkedText(Object value, int max) {
-        if (!(value instanceof String) || ((String) value).trim().isEmpty() || ((String) value).length() > max) throw invalid();
+    private static void checkedText(Object value,int max,String field) {
+        if(!(value instanceof String)) throw fieldError(field,"需要文字，收到"+kind(value));
+        if(((String)value).trim().isEmpty()) throw fieldError(field,"内容为空");
+        if(((String)value).length()>max) throw fieldError(field,"文字长度超过"+max+"字符");
+    }
+    private static String kind(Object value) {
+        if(value==null || value==JSONObject.NULL) return "空值";
+        if(value instanceof JSONObject) return "对象";
+        if(value instanceof JSONArray) return "列表";
+        if(value instanceof Number) return "数字";
+        if(value instanceof Boolean) return "布尔值";
+        if(value instanceof String) return "文字";
+        return "其他类型";
+    }
+    private static IllegalStateException fieldError(String field,String reason) {
+        return new IllegalStateException("模型回复中的"+field+"："+reason+"。诊断码 R04。");
     }
     private static IllegalStateException invalid() { return new IllegalStateException("模型描述的字段格式不符合要求，请重试。诊断码 R04。"); }
     private static IllegalStateException envelopeError() { return new IllegalStateException("模型服务返回的响应结构不符合接口格式，请检查接口类型或重试。诊断码 R00。"); }
