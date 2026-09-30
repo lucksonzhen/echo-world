@@ -44,36 +44,21 @@ final class SetupGuideChecks {
     }
     int run() throws Exception {
         android.content.SharedPreferences prefs=runner.getTargetContext().getSharedPreferences("setup_guide",0);
-        prefs.edit().clear().putBoolean("paused",true).commit();
+        prefs.edit().clear().putBoolean("paused",true).putBoolean("voice_enabled",true).commit();
         SettingsStore settings=new SettingsStore(runner.getTargetContext());
         try {
             open();
             ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"guide starts at provider for an unconfigured install"));
-            ui(()->activity.handleVoice("小助手选择第二项"));
-            ui(()->check(((DialPicker)field("choices")).getSelectedItemPosition()==1,"spoken option two selects DeepSeek without locating a button"));
-            ui(()->activity.handleVoice("小助手选择第一项"));
-            ui(()->activity.handleVoice("下一步"));
-            ui(()->check(field("step")==SetupFlow.Step.PROVIDER,"unprefixed or unrelated speech cannot advance setup"));
+            check(!prefs.contains("voice_enabled") && !WakeWordService.isRunning(),"legacy setup voice preference is removed without starting microphone");
             ui(()-> {
-                ((Narrator)field("narrator")).stop(); ((android.os.Handler)field("main")).removeCallbacks((Runnable)field("announcement"));
-                set("voiceMuteUntil",0L); set("screenReader",false); set("voiceWindowEnds",0L);
-                SetupGuideActivity.receiveVoice("选择第二项");
-                check(((DialPicker)field("choices")).getSelectedItemPosition()==0,"bare command outside listen window is ignored");
-                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
-                SetupGuideActivity.receiveVoice("选择第二项");
-                check(((DialPicker)field("choices")).getSelectedItemPosition()==1 && (Long)field("voiceWindowEnds")==0,"explicit listening accepts bare command and closes after one action");
-                ((Narrator)field("narrator")).stop(); ((android.os.Handler)field("main")).removeCallbacks((Runnable)field("announcement"));
-                set("voiceMuteUntil",0L); set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
-                SetupGuideActivity.receiveVoice("fixture-secret-not-a-command");
-                String message=((TextView)field("feedback")).getText().toString();
-                check(message.contains("没有听清") && !message.contains("fixture-secret"),"unrecognized speech gives feedback without echoing possible secrets");
-                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
-                ((Runnable)field("voiceTimeout")).run();
-                check(((TextView)field("feedback")).getText().toString().contains("没有收到") && (Long)field("voiceWindowEnds")==0,"silent listen timeout reports a retry instead of doing nothing");
-                set("voiceWindowEnds",SystemClock.uptimeMillis()+15000);
-                SetupGuideActivity.voiceUnavailable("麦克风被系统暂停");
-                check(((TextView)field("feedback")).getText().toString().contains("麦克风") && (Long)field("voiceWindowEnds")==0,"silenced microphone cancels listening with a visible reason");
-                ((DialPicker)field("choices")).setSelection(0);
+                BottomDial dial=(BottomDial)field("dial");
+                check(dial.items().stream().noneMatch(item->item.getText().contains("语音操作") || item.getText().contains("语音说一项")),"setup has no microphone command entry");
+                check(!((String)field("spoken")).contains("小助手") && ((String)field("spoken")).contains("双击"),"setup narration explains dial actions instead of spoken commands");
+                dial.performClick(); dial.move(1);
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==0,"browsing provider menu preserves confirmed value");
+                dial.performClick();
+                check(((DialPicker)field("choices")).getSelectedItemPosition()==1,"dial activation selects DeepSeek");
+                dial.performClick(); dial.move(-1); dial.performClick();
             });
             next();
             ui(()->check(field("step")==SetupFlow.Step.ADDRESS,"provider requires explicit confirmation"));
@@ -89,32 +74,25 @@ final class SetupGuideChecks {
             ui(()->check(field("step")==SetupFlow.Step.KEY && ((EditText)field("field")).getText().length()==0,"resume keeps confirmed progress but discards unsaved key"));
             ui(()->runner.getTargetContext().getSystemService(android.content.ClipboardManager.class)
                     .setPrimaryClip(android.content.ClipData.newPlainText("fixture","guide-fixture-secret")));
-            ui(()->activity.handleVoice("小助手粘贴密钥"));
+            click("粘贴密钥，不朗读内容");
             ui(()->check("guide-fixture-secret".contentEquals(((EditText)field("field")).getText())
-                    && !((TextView)field("feedback")).getText().toString().contains("guide-fixture-secret"),"explicit voice paste fills key without speaking its value"));
+                    && !((TextView)field("feedback")).getText().toString().contains("guide-fixture-secret"),"explicit dial paste fills key without speaking its value"));
             next();
             check(settings.isConfigured() && !settings.isConsentGranted(),"guide saves connection without granting screenshot consent");
             check(!runner.getTargetContext().getSharedPreferences("screen_assistant",0).getAll().toString().contains("guide-fixture-secret"),"guide credential stored encrypted");
             AtomicInteger calls=new AtomicInteger();
             AssistantApi fake=new AssistantApi(runner.getTargetContext(),url->new Fixture(url,calls.incrementAndGet()==1 ? 401 : 200));
             ui(()-> { ((AssistantApi)field("api")).close(); set("api",fake); });
-            ui(()->activity.handleVoice("小助手测试连接"));
-            check(calls.get()==0,"voice test request waits for a separate confirmation");
-            ui(()->activity.handleVoice("小助手取消操作"));
-            ui(()->activity.handleVoice("小助手确认操作"));
-            check(calls.get()==0,"cancelled voice confirmation cannot send a request");
+            check(calls.get()==0,"entering test step does not send a request automatically");
             next(); waitForIdleRequest();
             ui(()->check(field("step")==SetupFlow.Step.TEST && ((TextView)field("feedback")).getText().toString().contains("HTTP 401"),"failed test remains on test step with safe error"));
             check(!settings.isConnectionVerified(),"failed test cannot mark configuration verified");
-            ui(()->activity.handleVoice("小助手测试连接"));
-            ui(()->activity.handleVoice("小助手确认操作")); waitForIdleRequest();
+            next(); waitForIdleRequest();
             ui(()->check(field("step")==SetupFlow.Step.CONSENT,"successful test advances exactly one step"));
             check(calls.get()==2 && settings.isConnectionVerified() && !settings.isConsentGranted(),"only explicit tests send requests and consent remains separate");
-            ui(()->activity.handleVoice("小助手下一步"));
-            check(!settings.isConsentGranted(),"generic next command cannot grant screen upload consent");
-            ui(()->activity.handleVoice("小助手同意上传"));
-            check(!settings.isConsentGranted(),"spoken upload consent is explained before confirmation");
-            ui(()->activity.handleVoice("小助手确认操作"));
+            click("重听当前步骤");
+            check(!settings.isConsentGranted(),"reading upload explanation does not grant consent");
+            click("我了解并同意，继续");
             check(settings.isConsentGranted() && settings.isConnectionVerified(),"explicit consent saves without invalidating successful connection test");
             click("重听当前步骤");
             ui(()->check(field("step")==SetupFlow.Step.ACCESSIBILITY || field("step")==SetupFlow.Step.VOICE,"replay does not skip required permissions"));

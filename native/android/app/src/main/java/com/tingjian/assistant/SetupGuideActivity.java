@@ -20,50 +20,7 @@ import android.widget.*;
 /** A single-field, user-paced setup surface. No credential enters saved UI state or speech. */
 public final class SetupGuideActivity extends Activity {
     private static volatile boolean visible;
-    private static java.lang.ref.WeakReference<SetupGuideActivity> current=new java.lang.ref.WeakReference<>(null);
-    private static final java.util.concurrent.atomic.AtomicLong voiceVersion=new java.util.concurrent.atomic.AtomicLong();
     public static boolean isVisible() { return visible; }
-    public static long voiceEpoch() { return voiceVersion.get(); }
-    public static boolean isVoiceBlocked() {
-        SetupGuideActivity activity=current.get();
-        return activity==null || !visible || activity.narrator==null || activity.narrator.isSpeaking()
-                || android.os.SystemClock.uptimeMillis()<activity.voiceMuteUntil
-                || (activity.screenReader && android.os.SystemClock.uptimeMillis()>activity.voiceWindowEnds);
-    }
-    public static void receiveVoice(String words) {
-        SetupGuideActivity activity=current.get();
-        if (activity==null || !visible) return;
-        if (isVoiceBlocked()) {
-            if (SetupVoiceCommand.parse(words).kind==SetupVoiceCommand.Kind.MUTE) activity.handleVoice(words);
-            return;
-        }
-        String normalized=VoiceCommandRouter.normalize(words);
-        if (normalized.isEmpty()) return;
-        if (normalized.equals("小助手")) { activity.beginVoiceWindow(); return; }
-        boolean explicit=activity.voiceWindowEnds>android.os.SystemClock.uptimeMillis();
-        SetupVoiceCommand command=SetupVoiceCommand.parseInput(words,explicit);
-        if (command.kind==SetupVoiceCommand.Kind.NONE) {
-            if (explicit) { activity.closeVoiceWindow(); activity.voiceMessage("没有听清配置指令。请再双击语音说一项，提示音后说下一步、上一步或选择第二项。"); }
-            return;
-        }
-        activity.closeVoiceWindow(); activity.executeVoice(command);
-    }
-    public static void voiceReady() {
-        SetupGuideActivity activity=current.get();
-        if (activity!=null && visible) {
-            if (activity.voiceEntry!=null) activity.voiceEntry.setText("语音说一项");
-            if (activity.listenRequested) activity.beginVoiceWindow();
-            else activity.feedback.setText("本地语音已就绪。双击语音说一项，提示音后直接说下一步、上一步或选择第二项。");
-        }
-    }
-    public static void voiceUnavailable(String message) {
-        SetupGuideActivity activity=current.get();
-        if (activity!=null && visible) {
-            activity.listenRequested=false; activity.closeVoiceWindow(); activity.voiceMessage(message);
-            if (activity.voiceEntry!=null) activity.voiceEntry.setText("重试配置语音操作");
-        }
-    }
-    public static void voiceFailed() { voiceUnavailable("本地语音未能启动或已中断。请检查麦克风权限后重试，也可继续使用拨轮。"); }
     private final Handler main = new Handler();
     private SettingsStore store;
     private SharedPreferences progress;
@@ -76,30 +33,22 @@ public final class SetupGuideActivity extends Activity {
     private DialPicker choices;
     private BottomDial dial;
     private static final String[] GUIDE_PROVIDERS={"gemini","deepseek","openai","compatible","backend"};
-    private BottomDial.Item next, pause, voiceEntry;
+    private BottomDial.Item next, pause;
     private String provider, address, model, spoken = "";
     private boolean resumed, busy, paused, pendingVoice, returningSystem;
     private long request;
-    private boolean setupVoiceEnabled, standbyAfterGuide, handingOff;
-    private volatile boolean screenReader;
-    private volatile long voiceMuteUntil, voiceWindowEnds;
-    private Runnable pendingVoiceAction;
-    private SetupFlow.Step pendingStep;
-    private long confirmationDeadline;
-    private boolean listenRequested, listenAfterPermission;
-    private static final long LISTEN_MS=15000;
-    private android.media.ToneGenerator listenTone;
+    private boolean standbyAfterGuide;
+    private boolean screenReader;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         store = new SettingsStore(this); api = new AssistantApi(this);
-        current=new java.lang.ref.WeakReference<>(this);
-        standbyAfterGuide=WakeWordService.isRunning() && !WakeWordService.isSetupMode();
+        standbyAfterGuide=WakeWordService.isRunning();
         progress = getSharedPreferences("setup_guide", MODE_PRIVATE);
         if (standbyAfterGuide) progress.edit().putBoolean("standby_after_guide",true).apply();
         paused = progress.getBoolean("paused", false);
-        setupVoiceEnabled=progress.getBoolean("voice_enabled",false);
+        progress.edit().remove("voice_enabled").apply();
         step = SetupFlow.restore(progress.getString("step", ""), store.isConfigured(), store.isConnectionVerified(),
                 store.isConsentGranted(), ScreenAssistantService.isConnected());
         provider = progress.getString("provider", store.getProvider());
@@ -107,17 +56,17 @@ public final class SetupGuideActivity extends Activity {
         model = progress.getString("model", DirectApiConfig.defaultModel(provider));
         if (store.isConfigured()) { provider = store.getProvider(); address = store.getServerUrl(); model = store.getModel(); }
         progress.edit().putBoolean("unfinished", step != SetupFlow.Step.DONE).apply();
-        narrator = new Narrator(this, message -> { voiceMuteUntil=0; if (feedback != null) feedback.setText(message + " 可使用系统读屏继续，或打开中文语音设置。"); });
+        narrator = new Narrator(this, message -> { if (feedback != null) feedback.setText(message + " 可使用系统读屏继续，或打开中文语音设置。"); });
         narrator.setSpeechRate(1.0f);
         render();
     }
 
     private void render() {
-        narrator.stop(); field = null; choices = null; pendingVoiceAction=null; voiceVersion.incrementAndGet();
+        narrator.stop(); field = null; choices = null;
         screenReader=AccessibilitySupport.hasScreenReader(this);
         if(dial!=null) dial.setActive(false);
         dial=new BottomDial(this,new BottomDial.Feedback() {
-            public void stop() { narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow(); voiceMuteUntil=0; }
+            public void stop() { narrator.stop(); main.removeCallbacks(announcement); }
             public void speak(String text) { SetupGuideActivity.this.speak(text,true); }
         });
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
@@ -140,7 +89,7 @@ public final class SetupGuideActivity extends Activity {
         String title, detail, action = "完成本项，继续";
         switch (step) {
             case PROVIDER:
-                title = "模型接口配置"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。可说小助手，选择第二项，选择 DeepSeek；选好后说小助手，下一步。默认选择 Gemini。";
+                title = "模型接口配置"; detail = "选项一，Gemini；选项二，DeepSeek；选项三，OpenAI；选项四，自定义兼容接口；选项五，原有中转服务。双击模型接口配置，左右滑动选择服务商，再双击确认。选好后选择完成本项，继续。默认选择 Gemini。";
                 choices = new DialPicker(dial,selectionCard(),title,
                         new String[]{"Gemini 官方 API", "DeepSeek 官方 API", "OpenAI 官方 API", "自定义 OpenAI 兼容接口", "原有中转服务"});
                 for (int i=0;i<GUIDE_PROVIDERS.length;i++) if (provider.equals(GUIDE_PROVIDERS[i])) choices.setSelection(i);
@@ -157,8 +106,8 @@ public final class SetupGuideActivity extends Activity {
                 input(title,model,false); field.setEnabled(!"backend".equals(provider)); break;
             case KEY:
                 title = "backend".equals(provider) ? "中转访问口令" : "API Key 密钥";
-                detail = "先在服务商页面复制密钥，回到这里后可说小助手，粘贴密钥。只在你明确要求时读取剪贴板；不会读出或口述识别密钥。"
-                        + ("backend".equals(provider) ? "中转没有设置口令时可以留空。" : "此项不能为空。") + "也可用读屏器定位密码输入框并粘贴，完成后说小助手，下一步。";
+                detail = "先在服务商页面复制密钥，回到这里，在拨轮选择粘贴密钥并双击。只在你确认粘贴时读取剪贴板，不会读出密钥。"
+                        + ("backend".equals(provider) ? "中转没有设置口令时可以留空。" : "此项不能为空。") + "也可用读屏器定位密码输入框并粘贴，完成后在拨轮选择完成本项，继续。";
                 input(title,"",true); break;
             case TEST:
                 title = "测试连接"; action = "保存并测试识图连接";
@@ -175,7 +124,7 @@ public final class SetupGuideActivity extends Activity {
                 button("打开本应用信息", () -> openSystem(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:"+getPackageName())))); break;
             case VOICE:
                 title = "免触摸语音待命，可选"; action = "允许麦克风并开启语音待命";
-                detail = "开启后，结束引导时会启动日常语音待命，可在其他应用说小助手，描述屏幕。声音只在本机处理，系统会显示麦克风标记。可说小助手，开启本项；也可说小助手，跳过。首次麦克风授权仍需用系统读屏确认。"; break;
+                detail = "开启后，结束引导时会启动日常语音待命，可在其他应用说小助手，描述屏幕。声音只在本机处理，系统会显示麦克风标记。在拨轮选择允许麦克风并开启语音待命，或选择暂不开启，继续。首次麦克风授权需在系统弹窗中确认。"; break;
             case PAUSE:
                 title = "暂停后讲解，可选"; action = "设置并开启暂停讲解";
                 detail = "开启后，视频从播放变为暂停时会自动上传一张画面并朗读。需要通知使用权，只处理媒体播放状态，不读取通知正文。不需要可点暂不开启。授权后返回，再点击开启。"; break;
@@ -187,16 +136,14 @@ public final class SetupGuideActivity extends Activity {
                 detail = "如果希望语音长期待命，可在系统电池优化列表找到听见世界，选择不优化。可能增加耗电，且不能保证后台一直运行。不同手机可能还需允许后台活动。可以选择暂不调整。"; break;
             default:
                 title = "基础配置已完成"; action = "完成引导，返回应用";
-                detail = "说小助手，下一步，结束引导。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。底部备用拨轮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
+                detail = "在拨轮选择完成引导，返回应用。若已选择日常语音待命，准备完成后，在其他应用说小助手，描述屏幕。底部备用拨轮默认隐藏，可在主界面或通过语音显示。其他设置随时可调整。";
         }
-        spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。" + voiceHelp();
-        if (!setupVoiceEnabled) spoken = "首次使用语音操作，需要授权麦克风。在底部拨轮找到开启配置语音操作并双击；未开启读屏时，本页面也可按音量加键请求权限。系统授权弹窗仍需用读屏完成。" + spoken;
-        if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。首次麦克风授权和系统开关仍需这样操作。未开启读屏时可按本页的音量加键请求语音权限。开启读屏的快捷方式因手机设置而异。";
+        spoken = title + "。" + detail + " 所有操作都在屏幕底部拨轮，左右滑动切换，停稳听取，双击执行。";
+        if (step==SetupFlow.Step.PROVIDER) spoken += " 如果使用 TalkBack，单指左右滑动听取选项，双击屏幕执行当前选项，双指滑动滚动。系统开关仍需通过系统界面操作。开启读屏的快捷方式因手机设置而异。";
         heading.setText(displayTitle());
         instructions.setText(displaySummary());
         feedback=label("",14); feedback.setTextColor(Color.rgb(100,114,105)); feedback.setMaxLines(4); feedback.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams feedbackParams=(LinearLayout.LayoutParams)feedback.getLayoutParams(); feedbackParams.topMargin=dp(20); feedback.setLayoutParams(feedbackParams);
-        voiceEntry=button(WakeWordService.isReady() ? "语音说一项" : "开启配置语音操作",this::enableSetupVoice);
         if (field!=null && field.isEnabled()) button(step==SetupFlow.Step.KEY ? "粘贴密钥，不朗读内容" : "从剪贴板粘贴本项",this::pasteField);
         next = button(action,this::completeCurrent); next.setEnabled(!busy);
         if (step == SetupFlow.Step.VOICE || step == SetupFlow.Step.PAUSE || step == SetupFlow.Step.IMAGES || step == SetupFlow.Step.BATTERY)
@@ -204,7 +151,7 @@ public final class SetupGuideActivity extends Activity {
         if (step!=SetupFlow.Step.PROVIDER) button("返回上一步",this::previousStep);
         button("重听当前步骤", () -> speak(spoken, true));
         pause = button(paused ? "继续语音引导" : "暂停语音引导", () -> {
-            paused = !paused; progress.edit().putBoolean("paused",paused).apply(); narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow(); voiceMuteUntil=0;
+            paused = !paused; progress.edit().putBoolean("paused",paused).apply(); narrator.stop(); main.removeCallbacks(announcement);
             pause.setText(paused ? "继续语音引导" : "暂停语音引导");
             if (!paused) speak(spoken, false);
         });
@@ -274,13 +221,6 @@ public final class SetupGuideActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results) {
         super.onRequestPermissionsResult(code,permissions,results);
-        if (code==82) {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) {
-                setupVoiceEnabled=true; progress.edit().putBoolean("voice_enabled",true).apply();
-                if (resumed) enableSetupVoice(); else listenAfterPermission=true;
-            } else { listenAfterPermission=false; voiceMessage("麦克风尚未允许。请在应用信息的权限中允许麦克风，再重试；也可继续使用拨轮。"); }
-            return;
-        }
         if (code!=81) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startVoice();
         else sayResult("麦克风尚未允许。本项不会自动完成，可以重试、在系统应用信息中授权，或选择暂不开启。");
@@ -294,7 +234,6 @@ public final class SetupGuideActivity extends Activity {
     private void speak(String text, boolean explicit) {
         main.removeCallbacks(announcement);
         if (!resumed || (paused && !explicit)) return;
-        closeVoiceWindow(); voiceMuteUntil=Long.MAX_VALUE;
         announcementText=text; main.postDelayed(announcement,450);
     }
     private String announcementText="";
@@ -303,10 +242,8 @@ public final class SetupGuideActivity extends Activity {
         screenReader=AccessibilitySupport.hasScreenReader(this);
         if (screenReader) {
             narrator.stop(); instructions.announceForAccessibility(announcementText);
-            voiceMuteUntil=0; // External reader timing is unknown; voice requires an explicit listen window.
         } else {
-            long epoch=voiceVersion.get();
-            narrator.speak(announcementText,completed -> { if (voiceVersion.get()==epoch) voiceMuteUntil=android.os.SystemClock.uptimeMillis()+800; });
+            narrator.speak(announcementText);
         }
     };
     private void sayResult(String text) { feedback.setText(text); speak(text,true); }
@@ -316,7 +253,7 @@ public final class SetupGuideActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume(); ScreenAssistantService.setAppControlsVisible(true); resumed=true; visible=true; if(dial!=null) dial.setActive(true);
-        current=new java.lang.ref.WeakReference<>(this); screenReader=AccessibilitySupport.hasScreenReader(this);
+        screenReader=AccessibilitySupport.hasScreenReader(this);
         standbyAfterGuide=standbyAfterGuide || progress.getBoolean("standby_after_guide",false);
         SetupFlow.Step restored=SetupFlow.restore(step.name(),store.isConfigured(),store.isConnectionVerified(),
                 store.isConsentGranted(),ScreenAssistantService.isConnected());
@@ -327,23 +264,17 @@ public final class SetupGuideActivity extends Activity {
         else if (returned && step==SetupFlow.Step.BATTERY && getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName())) advance();
         else speak(spoken,false);
         main.post(observe);
-        if (listenAfterPermission && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) {
-            listenAfterPermission=false; enableSetupVoice();
-        } else if (setupVoiceEnabled && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) {
-            try { WakeWordService.startSetup(this); } catch (RuntimeException unavailable) { sayResult("请重新开启配置语音操作，或使用系统读屏。"); }
-        }
     }
+
     @Override protected void onPause() {
-        resumed=false; visible=false; if(dial!=null) dial.setActive(false); closeVoiceWindow();
-        pendingVoiceAction=null; listenRequested=false;
-        main.removeCallbacksAndMessages(null); narrator.stop(); voiceMuteUntil=0;
-        if (!handingOff && WakeWordService.isSetupMode()) WakeWordService.stopListening(this);
+        resumed=false; visible=false; if(dial!=null) dial.setActive(false);
+        main.removeCallbacksAndMessages(null); narrator.stop();
         // A response while backgrounded must not silently advance the wizard.
         if (busy && step==SetupFlow.Step.TEST) { request++; api.cancel(); busy=false; next.setEnabled(true); feedback.setText("测试已暂停，返回后可重新点击测试。"); }
         ScreenAssistantService.setAppControlsVisible(false); super.onPause();
     }
-    @Override protected void onDestroy() { main.removeCallbacksAndMessages(null); api.close(); narrator.shutdown(); if (listenTone!=null) listenTone.release(); super.onDestroy(); }
-    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (!focus && narrator!=null) { narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow(); voiceMuteUntil=0; } }
+    @Override protected void onDestroy() { main.removeCallbacksAndMessages(null); api.close(); narrator.shutdown(); super.onDestroy(); }
+    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (!focus && narrator!=null) { narrator.stop(); main.removeCallbacks(announcement); } }
     private long busySince;
     private final Runnable observe = new Runnable() {
         public void run() {
@@ -369,7 +300,7 @@ public final class SetupGuideActivity extends Activity {
         android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(); surface.setColor(Color.WHITE); surface.setCornerRadius(dp(18)); surface.setStroke(dp(1),Color.rgb(220,227,219)); field.setBackground(surface);
         field.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_URI));
         field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO); field.setSaveEnabled(false); field.setText(value);
-        field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow(); voiceMuteUntil=0; } });
+        field.setOnFocusChangeListener((view,focused)-> { if (focused) { narrator.stop(); main.removeCallbacks(announcement); } });
         body.addView(field,new LinearLayout.LayoutParams(-1,-2));
         EditText input=field;
         dial.add("编辑"+title,()->{ if(!input.isEnabled()) { sayResult("本项已预填，无需编辑。"); return; } input.requestFocus(); getSystemService(android.view.inputmethod.InputMethodManager.class).showSoftInput(input,0); });
@@ -406,60 +337,6 @@ public final class SetupGuideActivity extends Activity {
         }
     }
 
-    private String voiceHelp() {
-        String hint=" 可说小助手，重听；小助手，上一步；或小助手，稍后配置。";
-        if (step==SetupFlow.Step.TEST) hint+=" 说小助手，测试连接，然后听取复述，再说小助手，确认操作。";
-        else if (step==SetupFlow.Step.CONSENT) hint+=" 愿意上传时，说小助手，同意上传，再听取复述确认。";
-        else if (step==SetupFlow.Step.VOICE || step==SetupFlow.Step.PAUSE || step==SetupFlow.Step.IMAGES) hint+=" 说小助手，开启本项，或小助手，跳过。";
-        else if (step==SetupFlow.Step.ACCESSIBILITY || step==SetupFlow.Step.BATTERY) hint+=" 说小助手，打开设置。系统设置中需用系统读屏操作。";
-        else hint+=" 本项完成后可说小助手，下一步。";
-        hint+=" 双击语音说一项后，等读屏声音结束和提示音响起，十五秒内直接说下一步、上一步等指令，不必加小助手。未听清时会提示，请重新开启后再说。";
-        return hint;
-    }
-    private void voiceMessage(String text) { feedback.setText(text); speak(text,true); }
-    private void enableSetupVoice() {
-        screenReader=AccessibilitySupport.hasScreenReader(this);
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},82); return;
-        }
-        setupVoiceEnabled=true; progress.edit().putBoolean("voice_enabled",true).apply(); listenRequested=true;
-        try {
-            if (WakeWordService.isReady() && WakeWordService.isSetupMode()) {
-                if (WakeWordService.isMicrophoneSilenced()) voiceUnavailable("系统暂停了麦克风输入。请检查手机的麦克风总开关，并结束占用麦克风的录音或通话后重试。");
-                else beginVoiceWindow();
-            } else {
-                voiceMessage("正在准备本地语音，首次开启需要稍等。准备好会响提示音，之后可直接说下一步或选择第二项。");
-                WakeWordService.startSetup(this);
-            }
-        } catch (RuntimeException error) { voiceUnavailable("无法开启配置语音操作，请检查麦克风权限后重试，也可继续使用拨轮。"); }
-    }
-    private void closeVoiceWindow() {
-        voiceWindowEnds=0; voiceVersion.incrementAndGet();
-        main.removeCallbacks(openVoiceWindow); main.removeCallbacks(voiceTimeout);
-    }
-    private void beginVoiceWindow() {
-        listenRequested=false; narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow();
-        // Give a preceding dial/reader announcement a moment to finish. Ignore our beep and its echo.
-        voiceMuteUntil=Long.MAX_VALUE;
-        feedback.setText("准备听你说。提示音后直接说下一步、上一步或选择第二项。");
-        main.postDelayed(openVoiceWindow,screenReader ? 1200 : 350);
-    }
-    private final Runnable openVoiceWindow=()-> {
-        if (!resumed || !hasWindowFocus()) { voiceMuteUntil=0; return; }
-        voiceVersion.incrementAndGet();
-        voiceMuteUntil=android.os.SystemClock.uptimeMillis()+300;
-        voiceWindowEnds=voiceMuteUntil+LISTEN_MS;
-        feedback.setText("正在听 · 15 秒。直接说下一步、上一步或选择第二项；说完稍等。仅识别配置指令。");
-        try {
-            if (listenTone==null) listenTone=new android.media.ToneGenerator(android.media.AudioManager.STREAM_ACCESSIBILITY,65);
-            listenTone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,150);
-        } catch (RuntimeException unavailable) { feedback.setText("正在听 · 提示音不可用。现在可直接说一条配置指令。"); }
-        main.postDelayed(this.voiceTimeout,LISTEN_MS+300);
-    };
-    private final Runnable voiceTimeout=()-> {
-        if (!resumed || voiceWindowEnds==0) return;
-        closeVoiceWindow(); voiceMessage("没有收到可用的配置指令。请再双击语音说一项，提示音后说下一步或选择第二项；仍无响应时，请检查麦克风权限和手机的麦克风总开关。");
-    };
     private void pasteField() {
         if (field==null || !field.isEnabled()) { sayResult("当前项没有可粘贴的输入框。"); return; }
         android.content.ClipboardManager clipboard=getSystemService(android.content.ClipboardManager.class);
@@ -467,7 +344,7 @@ public final class SetupGuideActivity extends Activity {
         CharSequence text=clip==null || clip.getItemCount()==0 ? null : clip.getItemAt(0).getText();
         if (text==null || text.length()==0 || text.length()>4096) { sayResult("剪贴板没有合适的纯文本，请先复制本项内容。"); return; }
         field.setText(text.toString().trim());
-        sayResult(step==SetupFlow.Step.KEY ? "已粘贴密钥，不朗读内容。确认来源正确后，说小助手，下一步保存。" : "已粘贴本项。可使用系统读屏核对，或说小助手，下一步进行校验。");
+        sayResult(step==SetupFlow.Step.KEY ? "已粘贴密钥，不朗读内容。确认来源正确后，在拨轮选择完成本项，继续。" : "已粘贴本项。可使用系统读屏核对，再选择完成本项，继续进行校验。");
     }
     private void skipCurrent() {
         if (step==SetupFlow.Step.VOICE) { standbyAfterGuide=false; progress.edit().putBoolean("standby_after_guide",false).apply(); }
@@ -477,73 +354,11 @@ public final class SetupGuideActivity extends Activity {
         if (step==SetupFlow.Step.PROVIDER) { sayResult("已经是第一项。"); return; }
         go(SetupFlow.Step.values()[step.ordinal()-1]);
     }
-    private void confirmVoice(String description,Runnable action) {
-        pendingVoiceAction=action; pendingStep=step; confirmationDeadline=android.os.SystemClock.uptimeMillis()+90000;
-        String prompt=description+" 若确认，请说小助手，确认操作；不执行请说小助手，取消操作。";
-        feedback.setText(prompt); speak(prompt,true); // An explicit action must still explain consent when automatic guidance is paused.
-    }
-    // Package-visible for deterministic instrumentation; microphone results use the same entry point.
-    void handleVoice(String words) {
-        executeVoice(SetupVoiceCommand.parse(words));
-    }
-    private void executeVoice(SetupVoiceCommand command) {
-        if (command.kind==SetupVoiceCommand.Kind.NONE) return;
-        if (command.kind==SetupVoiceCommand.Kind.CONFIRM) {
-            Runnable action=pendingVoiceAction; pendingVoiceAction=null;
-            if (action!=null && pendingStep==step && android.os.SystemClock.uptimeMillis()<=confirmationDeadline) action.run();
-            else sayResult("没有等待确认的操作，请重新说你要做什么。");
-            return;
-        }
-        pendingVoiceAction=null;
-        switch (command.kind) {
-            case HELP: speak(spoken,true); break;
-            case MUTE:
-                narrator.stop(); main.removeCallbacks(announcement); closeVoiceWindow(); voiceMuteUntil=0;
-                feedback.setText("已暂停本次朗读。可以继续说指令，或说小助手，重听。"); break;
-            case CANCEL: sayResult("已取消，仍停留在当前项。"); break;
-            case BACK: previousStep(); break;
-            case DEFER: finish(); break;
-            case PASTE: pasteField(); break;
-            case PROVIDER:
-                if (step!=SetupFlow.Step.PROVIDER) { sayResult("当前不是接口类型这一步，请先返回上一步。"); break; }
-                int selected=java.util.Arrays.asList(GUIDE_PROVIDERS).indexOf(DirectApiConfig.PROVIDERS[command.providerIndex]);
-                choices.setSelection(selected);
-                sayResult("已选择"+choices.label(selected)+"。说小助手，下一步确认。"); break;
-            case SKIP:
-                if (step==SetupFlow.Step.VOICE || step==SetupFlow.Step.PAUSE || step==SetupFlow.Step.IMAGES || step==SetupFlow.Step.BATTERY) skipCurrent();
-                else sayResult("当前是必要配置，不能跳过；可说小助手，稍后配置。"); break;
-            case TEST:
-                if (step==SetupFlow.Step.TEST) confirmVoice("将发送生成的小图测试连接，可能产生一次 API 费用，不截取屏幕。",this::completeCurrent);
-                else sayResult("当前不是连接测试这一步。"); break;
-            case CONSENT:
-                if (step==SetupFlow.Step.CONSENT) confirmVoice("将允许按命令采集屏幕画面并发送到已配置的模型服务商进行描述。",this::completeCurrent);
-                else sayResult("当前不是屏幕上传说明这一步。"); break;
-            case ENABLE:
-                if (step==SetupFlow.Step.VOICE || step==SetupFlow.Step.PAUSE || step==SetupFlow.Step.IMAGES)
-                    confirmVoice(step==SetupFlow.Step.VOICE ? "结束引导后将启动麦克风语音待命。" : "将开启当前自动描述功能，触发后会自动上传画面，可能产生 API 费用。",this::completeCurrent);
-                else sayResult("当前不是可选功能这一步。"); break;
-            case SETTINGS:
-                if (step==SetupFlow.Step.ACCESSIBILITY || step==SetupFlow.Step.BATTERY) completeCurrent();
-                else sayResult("当前项无需打开系统设置，可先重听说明。"); break;
-            case NEXT:
-                if (step==SetupFlow.Step.TEST) confirmVoice("将发送生成的小图测试连接，可能产生 API 费用。",this::completeCurrent);
-                else if (step==SetupFlow.Step.CONSENT) sayResult("请先听取上传说明。愿意时明确说小助手，同意上传。");
-                else if (step==SetupFlow.Step.VOICE || step==SetupFlow.Step.PAUSE || step==SetupFlow.Step.IMAGES)
-                    sayResult("请明确说小助手，开启本项；或者小助手，跳过。");
-                else completeCurrent(); break;
-            default: break;
-        }
-    }
-    @Override public boolean onKeyDown(int keyCode,android.view.KeyEvent event) {
-        if (keyCode==android.view.KeyEvent.KEYCODE_VOLUME_UP && !screenReader && event.getRepeatCount()==0) { enableSetupVoice(); return true; }
-        return super.onKeyDown(keyCode,event);
-    }
     @Override public void finish() {
-        handingOff=true;
         if (standbyAfterGuide && store!=null && store.isConsentGranted() && ScreenAssistantService.isConnected()
                 && checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) {
             try { startForegroundService(new Intent(this,WakeWordService.class)); } catch (RuntimeException ignored) { }
-        } else if (WakeWordService.isSetupMode()) WakeWordService.stopListening(this);
+        }
         if (progress!=null) progress.edit().putBoolean("standby_after_guide",false).apply();
         super.finish();
     }

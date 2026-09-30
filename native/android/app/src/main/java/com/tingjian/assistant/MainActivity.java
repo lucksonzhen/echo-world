@@ -70,7 +70,7 @@ public final class MainActivity extends Activity {
         text(body,"留在正在浏览的应用里，\n一句话，听懂眼前的画面。",20);
         text(body,"完成一次设置后，直接说“小助手，描述屏幕”。日常浏览无需找按钮，也不用下载图片或视频。",16);
         status = text(body,"",16); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        button(body,"逐项语音配置引导",this::openSetupGuide);
+        button(body,"逐项设置引导",this::openSetupGuide);
         text(body,"操作集中在底部拨轮：左右滑动切换，咔哒声后停稳听取，双击执行。开启读屏时可用双指横滑，或拨轮的上一项、下一项无障碍操作。底部备用拨轮默认隐藏，语音操作不依赖悬浮窗。",16);
         button(body,"显示底部备用拨轮",()->setOverlayVisible(true));
         button(body,"隐藏悬浮按钮，保留语音服务",()->setOverlayVisible(false));

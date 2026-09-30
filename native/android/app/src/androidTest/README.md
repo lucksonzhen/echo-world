@@ -65,14 +65,6 @@ powershell -ExecutionPolicy Bypass -File native/android/app/src/androidTest/gene
 样本生成和 WAV 格式检查不代表设备模型测试已经通过，设备结果需另行记录。即使十项均通过，也只验证这一组合成音频的实际模型解码与命令路由，不能代表真人口音、远距离、噪音、视频外放、TTS 回声或真实麦克风的唤醒准确率；权限、前台服务、截图和朗读的整条免触摸流程仍需单独验收。
 
 
-## 配置语音样本（1.5.0）
+## 配置引导（1.6.4）
 
-另有 `assets/setup-commands/` 下 10 段固定合成语音，由 `generate-setup-fixtures.ps1` 使用相同声音与编码参数生成（共 1,282,520 字节）。覆盖下一步、上一步、选择第二项、再说一遍、粘贴密钥、测试连接、同意上传、确认操作、取消操作、跳过。
-
-使用 `-PtestRunner=com.tingjian.assistant.SetupVoiceModelInstrumentation` 构建测试 APK，再运行 `adb shell am instrument -w com.tingjian.assistant.screen.test/com.tingjian.assistant.SetupVoiceModelInstrumentation`。每段只将实际语音终点交给配置命令解析器，部分结果和强制 EOF 不触发操作。本轮使用 APK 内置的 Vosk small 中文模型；“上一步”识别为“上一部”的同音结果只作为返回动作兼容，不放宽同意或确认命令。
-
-配置 Activity、模拟 API、授权和密钥保护另由 `-PtestRunner=com.tingjian.assistant.DirectApiInstrumentation` 检查。音频样本不包含真人录音，不能替代实际麦克风和读屏全流程验收。
-
-## 配置语音短时输入（1.6.3）
-
-增加 4 段不带唤醒词的固定合成语音：下一步、选择第二项、确认操作、取消操作。由相同脚本生成，与此前 10 段合计 14 段、1,719,656 字节。新增样本仅使用主动输入的解析模式；普通待命仍要求唤醒词。测试只在 Vosk 的实际语音终点交付命令，部分结果和 EOF 不执行。
+配置命令识别器和专用合成语音样本已随功能删除。`DirectApiInstrumentation` 中的 `SetupGuideChecks` 验证拨轮配置、升级清理旧配置语音状态、不会启动麦克风、密钥粘贴与保护、测试失败停留、显式上传授权。日常语音仍由 `VoiceModelInstrumentation` 和 `VoiceWakeControllerTest` 覆盖。
