@@ -61,10 +61,13 @@ public final class DirectModelProtocol {
     }
 
     public static JSONObject result(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question) throws Exception {
-        try { return parseResult(provider,envelope,frames,video,question); }
+        return result(provider,envelope,frames,video,question,"brief");
+    }
+    public static JSONObject result(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question,String mode) throws Exception {
+        try { return parseResult(provider,envelope,frames,video,question,mode); }
         catch(org.json.JSONException malformed) { throw envelopeError(); }
     }
-    private static JSONObject parseResult(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question) throws Exception {
+    private static JSONObject parseResult(String provider, JSONObject envelope, List<ScreenFrame> frames, boolean video, String question,String mode) throws Exception {
         if (envelope.has("error")) throw envelopeError();
         String text;
         if ("gemini".equals(provider)) {
@@ -100,23 +103,63 @@ public final class DirectModelProtocol {
             if (!(message.opt("content") instanceof String)) throw envelopeError();
             text = message.getString("content");
         }
-        text = text.trim();
-        if(text.startsWith("\uFEFF")) text=text.substring(1).trim();
+        text=unwrapFence(text);
         if(text.isEmpty()) throw emptyResponse();
-        java.util.regex.Matcher fenced=java.util.regex.Pattern.compile("\\A```(?:json)?[ \\t]*\\r?\\n([\\s\\S]*?)\\r?\\n?```\\z",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(text);
-        if(fenced.matches()) text=fenced.group(1).trim();
-        JSONObject result;
-        try {
-            org.json.JSONTokener parser=new org.json.JSONTokener(text);
-            Object parsed=parser.nextValue();
-            if(!(parsed instanceof JSONObject) || parser.nextClean()!=0) throw new org.json.JSONException("object required");
-            result=(JSONObject)parsed;
-        } catch (Exception error) { throw new IllegalStateException("模型回复不是可解析的描述格式，请重试。诊断码 R02。"); }
+        JSONObject result=parseDescription(text,"deepseek".equals(provider),!video && (question==null || question.trim().isEmpty())
+                && ("brief".equals(mode) || "detailed".equals(mode)));
         if("deepseek".equals(provider)) normalizeDeepSeek(result,question);
         validateResult(result, frames, video, question);
         return result;
     }
 
+    private static String unwrapFence(String text) {
+        text=text.trim();
+        if(text.startsWith("\uFEFF")) text=text.substring(1).trim();
+        // Accept a single complete fence, including compact one-line fences; never extract an arbitrary object from prose.
+        if(text.startsWith("```") && text.endsWith("```") && text.length()>=6) {
+            String inner=text.substring(3,text.length()-3).trim();
+            if(inner.regionMatches(true,0,"json",0,4)) inner=inner.substring(4).trim();
+            if(!inner.contains("```")) text=inner;
+        }
+        return text;
+    }
+    private static JSONObject parseDescription(String text,boolean deepseek,boolean allowProse) throws Exception {
+        if(deepseek && allowProse && isPlainNarration(text)) return plainDescription(text);
+        Object parsed=parseSingleValue(text,deepseek);
+        // One extra JSON string layer and a single-object array are unambiguous containers, not content repair.
+        if(deepseek && parsed instanceof String) parsed=parseSingleValue(unwrapFence((String)parsed),true);
+        if(deepseek && parsed instanceof JSONArray && ((JSONArray)parsed).length()==1) parsed=((JSONArray)parsed).opt(0);
+        if(!(parsed instanceof JSONObject)) throw formatError(deepseek ? "R24" : "R02","回复不是单个描述对象");
+        return (JSONObject)parsed;
+    }
+    private static Object parseSingleValue(String text,boolean deepseek) {
+        org.json.JSONTokener parser=new org.json.JSONTokener(text);
+        Object parsed;
+        try { parsed=parser.nextValue(); }
+        catch(org.json.JSONException invalid) { throw formatError(deepseek ? "R22" : "R02","回复中的 JSON 语法不完整或损坏"); }
+        try { if(parser.nextClean()!=0) throw formatError(deepseek ? "R23" : "R02","描述对象外还有其他内容，无法可靠合并"); }
+        catch(org.json.JSONException invalid) { throw formatError(deepseek ? "R22" : "R02","回复中的 JSON 语法不完整或损坏"); }
+        return parsed;
+    }
+    private static boolean isPlainNarration(String text) {
+        if(text.isEmpty() || text.length()>1500 || Character.UnicodeScript.of(text.codePointAt(0))!=Character.UnicodeScript.HAN) return false;
+        int chinese=0;
+        for(int i=0;i<text.length();) {
+            int code=text.codePointAt(i); i+=Character.charCount(code);
+            if("{}[]<>`".indexOf(code)>=0 || (Character.isISOControl(code) && code!='\n' && code!='\r' && code!='\t')) return false;
+            if(Character.UnicodeScript.of(code)==Character.UnicodeScript.HAN) chinese++;
+        }
+        return chinese>=6;
+    }
+    private static JSONObject plainDescription(String text) throws Exception {
+        // A textual refusal is not a successful connection test or a new screen description.
+        if(text.matches("(?s)^(抱歉[，,。\\s]*)?(我(无法|不能|看不到).{0,16}(图片|图像|截图|屏幕)|作为.{0,12}语言模型|未(收到|提供).{0,6}(图片|图像|截图)|请(先)?(上传|提供).{0,6}(图片|图像|截图)).*")) throw refused();
+        return new JSONObject().put("title","画面描述").put("summary",text).put("details",new JSONArray())
+                .put("visibleText",new JSONArray()).put("timeline",new JSONArray()).put("uncertainties",new JSONArray()).put("answer",JSONObject.NULL);
+    }
+    private static IllegalStateException formatError(String code,String reason) {
+        return new IllegalStateException(reason+"。请重试。诊断码 "+code+"。");
+    }
     /** Only normalize absent/empty optional data; never invent a summary or accept mistyped content. */
     private static void normalizeDeepSeek(JSONObject result,String question) throws Exception {
         if(emptyOptional(result.opt("title"))) result.put("title","画面描述");

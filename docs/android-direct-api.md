@@ -90,3 +90,11 @@ adb shell am instrument -w com.tingjian.assistant.screen.test/com.tingjian.assis
 诊断只使用固定提示，不记录或回显截图、模型回复或密钥。遇到问题可提供接口类型、模型名称、诊断码，以及小图连接测试是否成功，不需要提交密钥或私人截图。未取得用户手机的真实返回，本次不能确认上述哪种情况是该次故障的唯一原因。
 
 参考：[DeepSeek 图像输入](https://api-docs.deepseek.com/guides/vision/)、[JSON 输出与空内容说明](https://api-docs.deepseek.com/guides/json_mode/)。
+
+## Android 1.6.9 小图成功、屏幕 R02
+
+用户确认 DeepSeek `deepseek-flash` 小图测试成功，只有屏幕描述报 R02，因此继续针对正文解析处理。未取得手机失败回复原文，不能断定具体包装类型。
+
+静态画面的 brief／detailed 模式、无提问、正常 stop 且无接口 refusal 时，可以接收长度不超过 1500、以汉字开头且至少含六个汉字、没有结构／代码标记的普通中文描述，原样作为概要朗读，不编造文字识别结果或时间轴。已知的模型无法查看图片的文字拒绝仍不作为成功描述。此兼容不用于视频、读字、提问或其他服务商。
+
+结构化回复可无损解开一层 JSON 字符串或只含一个对象的数组；支持紧凑代码围栏。不会从夹带说明文字的正文中任意截取第一个对象，不修补损坏内容。DeepSeek 原 R02 进一步区分为：R22 JSON 语法损坏／不完整，R23 对象外还有内容，R24 不是单个描述对象。固定诊断不回显模型原文或密钥。

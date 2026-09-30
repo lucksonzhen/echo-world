@@ -109,8 +109,8 @@ public final class DirectApiInstrumentation extends Instrumentation {
         check(DirectModelProtocol.result("deepseek",wrapped,frames,false,null).getString("summary").contains("方块"),"DeepSeek BOM and CRLF code fence accepted without taking surrounding prose");
         rejectsWithCode(contentEnvelope("", "stop"),"R01","empty DeepSeek output has a distinct safe diagnosis");
         rejectsWithCode(contentEnvelope(JSONObject.NULL,"stop"),"R01","null DeepSeek output has empty response diagnosis");
-        rejectsWithCode(contentEnvelope("not json "+KEY,"stop"),"R02","non JSON response diagnosis never echoes upstream text");
-        rejectsWithCode(contentEnvelope(description()+" extra "+KEY,"stop"),"R02","trailing prose cannot silently pass JSON parsing");
+        rejectsWithCode(contentEnvelope("not json "+KEY,"stop"),"R23","non JSON response diagnosis never echoes upstream text");
+        rejectsWithCode(contentEnvelope(description()+" extra "+KEY,"stop"),"R23","trailing prose cannot silently pass JSON parsing");
         rejectsWithCode(contentEnvelope(description().toString(),"length"),"R06","truncated DeepSeek output is rejected even when JSON is complete");
         rejectsWithCode(envelope("deepseek",new JSONObject()),"R03","normalization never invents a missing summary");
         rejectsWithCode(envelope("deepseek",description().put("summary","")),"R03","empty summary remains an error");
@@ -128,6 +128,38 @@ public final class DirectApiInstrumentation extends Instrumentation {
         try {
             Reply reply=new Reply(); client.describe(frames,false,"brief",null,0,reply); reply.await();
             check(reply.error==null && reply.success.contains("蓝色杯子") && calls.get()==1,"DeepSeek minimal valid description reaches narration in one request");
+        } finally { client.close(); }
+    }
+    private void deepseekTextResponses(SettingsStore settings) throws Exception {
+        String prose="画面中央是一只蓝色杯子，放在浅色桌面上。背景是一面白墙。";
+        JSONObject reply=contentEnvelope(prose,"stop");
+        JSONObject parsed=DirectModelProtocol.result("deepseek",reply,frames,false,null,"brief");
+        check(parsed.getString("summary").equals(prose) && parsed.getJSONArray("timeline").length()==0,"DeepSeek complete Chinese screen prose is preserved verbatim without fabricated timeline");
+        check(DirectModelProtocol.result("deepseek",reply,frames,false,null,"detailed").getString("summary").equals(prose),"DeepSeek detailed static description accepts prose");
+        rejects(()->DirectModelProtocol.result("deepseek",reply,frames,true,null,"brief"),"video cannot fall back to unstructured prose");
+        rejects(()->DirectModelProtocol.result("deepseek",reply,frames,false,null,"text"),"OCR cannot label unstructured prose as recognized text");
+        rejects(()->DirectModelProtocol.result("deepseek",reply,frames,false,"杯子什么颜色","brief"),"question answer keeps its structured contract");
+        rejects(()->DirectModelProtocol.result("gemini",envelope("gemini",description()).put("error",true),frames,false,null),"other providers retain refusal and envelope checks");
+        rejects(()->DirectModelProtocol.result("openai",reply,frames,false,null),"OpenAI does not use DeepSeek prose compatibility");
+        rejectsWithCode(contentEnvelope("{\"summary\":\"坏掉的 JSON", "stop"),"R22","broken JSON cannot be read as a natural language description");
+        rejectsWithCode(contentEnvelope("<think>画面看起来可能是蓝色杯子</think>"+prose,"stop"),"R23","reasoning tags cannot enter spoken prose");
+        rejectsWithCode(contentEnvelope("```text\n"+prose+"\n```","stop"),"R23","unknown code block language cannot be narrated as prose");
+        rejectsWithCode(contentEnvelope(description()+"\n"+description(),"stop"),"R23","multiple descriptions are rejected rather than taking the first");
+        rejectsWithCode(contentEnvelope("["+description()+","+description()+"]","stop"),"R24","multiple object arrays are not silently merged");
+        check(DirectModelProtocol.result("deepseek",contentEnvelope("```json"+description()+"```","stop"),frames,false,null).getString("summary").contains("方块"),"compact single line JSON fence accepted");
+        check(DirectModelProtocol.result("deepseek",contentEnvelope(JSONObject.quote(description().toString()),"stop"),frames,false,null).getString("summary").contains("方块"),"one extra JSON string layer accepted without string replacement");
+        check(DirectModelProtocol.result("deepseek",contentEnvelope("["+description()+"]","stop"),frames,false,null).getString("summary").contains("方块"),"single description object array unwrapped");
+        rejects(()->DirectModelProtocol.result("deepseek",contentEnvelope("抱歉，我无法查看您提供的截图，请上传图片。","stop"),frames,false,null),"plain model refusal does not become a successful description");
+        String textScreen="页面没有图片，只有一行文字和一个确认按钮。";
+        check(DirectModelProtocol.result("deepseek",contentEnvelope(textScreen,"stop"),frames,false,null).getString("summary").equals(textScreen),"describing a text only screen is not mistaken for refusal");
+        rejects(()->DirectModelProtocol.result("deepseek",contentEnvelope(prose,"length"),frames,false,null),"truncated plain response is never spoken");
+        save(settings,"deepseek",true);
+        AtomicInteger calls=new AtomicInteger();
+        AssistantApi client=new AssistantApi(getTargetContext(),url->{ int n=calls.incrementAndGet(); return new FakeConnection(url,200,n==1 ? envelope("deepseek",description()).toString() : contentEnvelope(prose,"stop").toString()); });
+        try {
+            Reply test=new Reply(); client.check(test); test.await();
+            Reply screen=new Reply(); client.describe(frames,false,"brief",null,0,screen); screen.await();
+            check(test.error==null && screen.error==null && screen.success.contains(prose) && calls.get()==2,"small test JSON followed by screen prose succeeds without extra requests");
         } finally { client.close(); }
     }
     private void run() {
@@ -186,6 +218,7 @@ public final class DirectApiInstrumentation extends Instrumentation {
                 } finally { client.close(); }
             }
             deepseekCompatibility(settings);
+            deepseekTextResponses(settings);
             JSONObject truncated = envelope("gemini", description()); truncated.getJSONArray("candidates").getJSONObject(0).put("finishReason", "MAX_TOKENS");
             rejects(() -> DirectModelProtocol.result("gemini", truncated, frames, false, null), "truncated Gemini answer rejected");
             JSONObject refused = envelope("openai", description()); refused.getJSONArray("choices").getJSONObject(0).getJSONObject("message").put("refusal", "not allowed");

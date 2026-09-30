@@ -153,7 +153,7 @@ public final class AssistantApi {
                 int status = connection.getResponseCode();
                 if (status < 200 || status >= 300) throw new IllegalStateException(readHttpError(connection, status));
                 JSONObject result = read(connection);
-                if (snapshot.isDirect()) result = DirectModelProtocol.result(snapshot.provider, result, frames, video, question);
+                if (snapshot.isDirect()) result = DirectModelProtocol.result(snapshot.provider, result, frames, video, question, mode);
                 else DirectModelProtocol.validateResult(result, frames, video, question);
                 String speech = buildNarration(result, video, mode, question);
                 String message = test ? "手机直连识图测试成功。测试图描述：" + speech : speech;
